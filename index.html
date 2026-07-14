@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROTOCOLE DÉCRISTALLISATION — Scanner Biométrique</title>
+<!-- IA de détection de posture (TensorFlow.js MoveNet MultiPose) — fallback auto si hors-ligne -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js" defer></script>
+<style>
+/* ============================================================
+   CYBER-ERGONOMIE v4 — Vérification RÉELLE des postures (IA)
+   ============================================================ */
+:root{
+  --neon: rgb(0,255,100);
+  --neon-dim: rgba(0,255,100,.35);
+  --neon-faint: rgba(0,255,100,.08);
+  --amber:#ffb340;
+  --red:#ff2244;
+  --cyan:#00e5ff;
+  --bg:#020604;
+  --panel:rgba(0,20,10,.72);
+  --mono:'Consolas','Lucida Console','Courier New',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--neon);font-family:var(--mono);
+  overflow:hidden;text-transform:uppercase;letter-spacing:.06em;user-select:none;
+}
+
+/* ---------- Fond grille + CRT ---------- */
+#grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(var(--neon-faint) 1px,transparent 1px),
+    linear-gradient(90deg,var(--neon-faint) 1px,transparent 1px);
+  background-size:46px 46px;animation:gridDrift 24s linear infinite;}
+@keyframes gridDrift{from{background-position:0 0,0 0}to{background-position:0 46px,46px 0}}
+#vignette{position:fixed;inset:0;z-index:5;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.85) 100%);}
+#crt{position:fixed;inset:0;z-index:6;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 2px,transparent 2px 4px);
+  mix-blend-mode:multiply;}
+
+/* ---------- SCAN LASER global ---------- */
+#laser{position:fixed;left:0;width:100%;height:120px;z-index:4;pointer-events:none;
+  background:linear-gradient(to bottom,transparent 0%,rgba(0,255,100,.04) 30%,
+    rgba(0,255,100,.15) 48%,rgba(0,255,100,.8) 50%,rgba(0,255,100,.15) 52%,
+    rgba(0,255,100,.04) 70%,transparent 100%);
+  filter:drop-shadow(0 0 18px var(--neon));
+  animation:laserSweep 4.5s linear infinite;}
+@keyframes laserSweep{0%{top:-140px}100%{top:100vh}}
+
+/* ---------- Écrans ---------- */
+.screen{position:fixed;inset:0;z-index:2;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:6vh 3vw 3vh;text-align:center;overflow-y:auto;}
+.screen.active{display:flex}
+
+/* ---------- Boîtes high-tech ---------- */
+.tech-box{position:relative;border:1px solid var(--neon-dim);background:var(--panel);
+  box-shadow:0 0 30px rgba(0,255,100,.12),inset 0 0 40px rgba(0,255,100,.05);
+  padding:3vh 2.5vw;max-width:1280px;width:100%;}
+.tech-box::before,.tech-box::after,
+.tech-box>.corner::before,.tech-box>.corner::after{
+  content:'';position:absolute;width:26px;height:26px;border:2px solid var(--neon);}
+.tech-box::before{top:-2px;left:-2px;border-right:none;border-bottom:none}
+.tech-box::after{top:-2px;right:-2px;border-left:none;border-bottom:none}
+.tech-box>.corner::before{bottom:-2px;left:-2px;border-right:none;border-top:none}
+.tech-box>.corner::after{bottom:-2px;right:-2px;border-left:none;border-top:none}
+
+/* ---------- Barre de statut + fragments ---------- */
+#statusbar{position:fixed;top:0;left:0;right:0;z-index:3;display:flex;
+  justify-content:space-between;align-items:center;padding:8px 22px;font-size:12px;
+  color:var(--neon-dim);border-bottom:1px solid var(--neon-faint);background:rgba(0,10,5,.72);}
+#statusbar .blink{animation:blink 1.2s steps(2) infinite;color:var(--red)}
+@keyframes blink{50%{opacity:0}}
+#fragments{display:flex;gap:8px;align-items:center}
+#fragments .flabel{font-size:10px;color:var(--neon-dim);margin-right:4px}
+.frag{width:30px;height:34px;border:1px solid var(--neon-dim);display:flex;
+  align-items:center;justify-content:center;font-size:18px;font-weight:bold;
+  background:rgba(0,255,100,.04);color:var(--neon-dim);}
+.frag.found{color:var(--neon);border-color:var(--neon);
+  box-shadow:0 0 12px rgba(0,255,100,.6);text-shadow:0 0 10px var(--neon);
+  animation:fragPop .5s cubic-bezier(.2,1.6,.4,1);}
+@keyframes fragPop{0%{transform:scale(2.4);opacity:0}100%{transform:scale(1);opacity:1}}
+
+/* ============================================================
+   ÉCRAN 1 : ACCUEIL
+   ============================================================ */
+#spine{width:84px;height:114px;margin-bottom:1.8vh;filter:drop-shadow(0 0 14px var(--neon))}
+#spine .vert{animation:vertPulse 2.4s ease-in-out infinite}
+#spine .vert:nth-child(2){animation-delay:.15s}#spine .vert:nth-child(3){animation-delay:.3s}
+#spine .vert:nth-child(4){animation-delay:.45s}#spine .vert:nth-child(5){animation-delay:.6s}
+#spine .vert:nth-child(6){animation-delay:.75s}#spine .vert:nth-child(7){animation-delay:.9s}
+@keyframes vertPulse{0%,100%{opacity:.55}50%{opacity:1}}
+
+h1.title{font-size:clamp(20px,3.2vw,38px);letter-spacing:.22em;margin-bottom:1vh;
+  text-shadow:0 0 12px var(--neon),0 0 40px rgba(0,255,100,.4);}
+.subtitle{font-size:clamp(10px,1.1vw,13px);color:var(--neon-dim);margin-bottom:2.2vh;letter-spacing:.32em}
+
+#typewriter{min-height:3em;max-width:740px;margin:0 auto 2.6vh;
+  font-size:clamp(13px,1.5vw,18px);line-height:1.7;color:#baffd6;
+  text-shadow:0 0 8px rgba(0,255,100,.6);}
+#typewriter .cursor{display:inline-block;width:.6em;background:var(--neon);animation:blink .8s steps(2) infinite}
+
+#howto{display:flex;gap:1.6vw;justify-content:center;margin-bottom:3vh;flex-wrap:wrap}
+.howto-card{flex:1;min-width:180px;max-width:250px;border:1px dashed var(--neon-dim);
+  padding:14px 13px;background:rgba(0,255,100,.04);}
+.howto-card .ic{font-size:28px;margin-bottom:7px;filter:drop-shadow(0 0 8px var(--neon))}
+.howto-card .n{display:inline-block;border:1px solid var(--neon);padding:1px 9px;
+  font-size:11px;margin-bottom:7px;color:var(--neon);}
+.howto-card p{font-size:12px;line-height:1.55;color:#9fffc8;text-transform:none;letter-spacing:.04em}
+
+#btn-scan{font-family:var(--mono);text-transform:uppercase;letter-spacing:.2em;
+  font-size:clamp(14px,1.9vw,22px);font-weight:bold;color:var(--bg);background:var(--neon);
+  border:none;padding:19px 44px;cursor:pointer;
+  clip-path:polygon(18px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%,0 18px);
+  animation:heartbeat 1.6s ease-in-out infinite;
+  box-shadow:0 0 30px var(--neon),0 0 90px rgba(0,255,100,.5);transition:transform .15s;}
+#btn-scan:hover{transform:scale(1.06)}
+#btn-scan:disabled{opacity:.5;cursor:wait;animation:none}
+@keyframes heartbeat{
+  0%,100%{transform:scale(1);box-shadow:0 0 25px var(--neon),0 0 70px rgba(0,255,100,.4)}
+  14%{transform:scale(1.05)}28%{transform:scale(1)}
+  42%{transform:scale(1.08);box-shadow:0 0 45px var(--neon),0 0 130px rgba(0,255,100,.7)}
+  70%{transform:scale(1)}}
+#cam-status{margin-top:1.8vh;font-size:11px;letter-spacing:.15em;color:var(--neon-dim);
+  min-height:1.5em;text-transform:none;}
+#cam-status.err{color:var(--amber)}
+
+/* ============================================================
+   ÉCRAN 2 : POSTURES
+   ============================================================ */
+.step-tracker{display:flex;gap:12px;margin-bottom:1.6vh;align-items:center}
+.step-label{font-size:12px;color:var(--neon-dim);margin-right:8px}
+.step-dot{width:48px;height:8px;background:var(--neon-faint);border:1px solid var(--neon-dim);
+  clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%);transition:all .4s;}
+.step-dot.done{background:var(--neon);box-shadow:0 0 12px var(--neon)}
+.step-dot.current{background:var(--neon-dim);animation:blink 1s steps(2) infinite}
+
+#posture-name{font-size:clamp(20px,3.2vw,40px);letter-spacing:.14em;
+  text-shadow:0 0 14px var(--neon),0 0 50px rgba(0,255,100,.5);margin-bottom:.4vh;}
+#posture-sub{font-size:clamp(11px,1.2vw,15px);color:#8fffbe;opacity:.85;
+  text-transform:none;letter-spacing:.08em;margin-bottom:2vh;}
+
+#game-grid{display:grid;grid-template-columns:0.85fr 1.15fr;gap:2.2vw;align-items:stretch}
+@media(max-width:900px){#game-grid{grid-template-columns:1fr}}
+
+/* --- Panneau hologramme --- */
+#holo-panel{border:1px solid var(--neon-dim);background:rgba(0,255,100,.03);
+  padding:12px 16px 16px;display:flex;flex-direction:column;align-items:center;}
+.panel-title{font-size:11px;letter-spacing:.28em;color:var(--neon-dim);
+  margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+.panel-title .rec{width:8px;height:8px;border-radius:50%;background:var(--neon);
+  animation:blink 1.4s steps(2) infinite;box-shadow:0 0 8px var(--neon)}
+#holo-stage{position:relative;width:100%;max-width:230px;}
+#holo-stage::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
+  width:78%;height:14px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(0,255,100,.45),transparent 70%);
+  filter:blur(2px);animation:socle 2.5s ease-in-out infinite;}
+@keyframes socle{50%{opacity:.5;transform:translateX(-50%) scaleX(.92)}}
+.holo-svg{width:100%;display:none;filter:drop-shadow(0 0 8px rgba(0,255,100,.8));
+  animation:holoFlicker 4s linear infinite;}
+.holo-svg.active{display:block}
+@keyframes holoFlicker{0%,100%{opacity:1}92%{opacity:1}93%{opacity:.55}94%{opacity:1}96%{opacity:.7}97%{opacity:1}}
+.holo-svg .limb{stroke:var(--neon);stroke-width:6;stroke-linecap:round;fill:none}
+.holo-svg .head{stroke:var(--neon);stroke-width:5;fill:rgba(0,255,100,.14)}
+.holo-svg .hand{fill:var(--neon)}
+.holo-svg .zone{stroke:var(--amber);fill:rgba(255,179,64,.14);
+  animation:zonePulse 1.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center;}
+@keyframes zonePulse{50%{opacity:.35;transform:scale(1.12)}}
+.holo-svg .arrow{stroke:var(--amber);stroke-width:3.5;fill:none;stroke-dasharray:6 6;
+  animation:arrowFlow 1.2s linear infinite;opacity:.9;}
+@keyframes arrowFlow{to{stroke-dashoffset:-24}}
+.holo-svg .arrowhead{fill:var(--amber);stroke:none}
+.holo-svg .prop{stroke:rgba(0,255,100,.5);stroke-width:3;fill:none}
+.holo-svg [class^="j-"]{transform-box:view-box}
+.j-fingers{transform-origin:186px 84px;animation:jFingers 2.6s ease-in-out infinite}
+@keyframes jFingers{0%,15%{transform:rotate(0)}45%,70%{transform:rotate(32deg)}100%{transform:rotate(0)}}
+.j-pullhand{transform-origin:100px 84px;animation:jPullHand 2.6s ease-in-out infinite}
+@keyframes jPullHand{0%,15%{transform:rotate(0)}45%,70%{transform:rotate(6deg)}100%{transform:rotate(0)}}
+.j-armL{transform-origin:100px 84px;animation:jArmL 3s ease-in-out infinite}
+.j-armR{transform-origin:100px 84px;animation:jArmR 3s ease-in-out infinite}
+@keyframes jArmL{0%,100%{transform:rotate(10deg)}50%{transform:rotate(-4deg)}}
+@keyframes jArmR{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(4deg)}}
+.j-chest{transform-box:view-box;transform-origin:100px 105px;animation:chestOpen 3s ease-in-out infinite}
+@keyframes chestOpen{50%{transform:scale(1.25);opacity:.9}}
+.j-head{transform-origin:100px 66px;animation:jHead 4s ease-in-out infinite}
+@keyframes jHead{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(20deg)}}
+.j-draw{transform-origin:100px 84px;animation:jDraw 2.4s ease-in-out infinite}
+@keyframes jDraw{0%,20%{transform:rotate(0)}55%,75%{transform:rotate(-28deg)}100%{transform:rotate(0)}}
+.j-string{animation:stringT 2.4s ease-in-out infinite;transform-origin:40px 84px}
+@keyframes stringT{0%,20%{transform:scaleX(1)}55%,75%{transform:scaleX(1.06)}100%{transform:scaleX(1)}}
+
+#zone-tag{margin-top:4px;font-size:11px;letter-spacing:.22em;color:var(--amber);
+  border:1px solid rgba(255,179,64,.5);padding:4px 12px;
+  text-shadow:0 0 8px rgba(255,179,64,.7);}
+#instructions{margin-top:12px;width:100%;text-align:left;display:flex;flex-direction:column;gap:8px}
+.instr{display:flex;gap:11px;align-items:flex-start;font-size:clamp(12px,1.15vw,14px);
+  color:#c9ffe0;text-transform:none;letter-spacing:.03em;line-height:1.45;}
+.instr .num{flex:none;width:23px;height:23px;border:1px solid var(--neon);color:var(--neon);
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;
+  clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px);
+  background:rgba(0,255,100,.08);}
+
+/* --- Panneau caméra --- */
+#cam-panel{border:1px solid var(--neon-dim);background:rgba(0,255,100,.03);
+  padding:12px 16px 14px;display:flex;flex-direction:column;align-items:center;position:relative;}
+#cam-frame{position:relative;width:100%;max-width:580px;aspect-ratio:16/9;
+  overflow:hidden;border:1px solid var(--neon-dim);background:#000;}
+#cam-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  transform:scaleX(-1);
+  filter:grayscale(1) brightness(1.25) contrast(1.15) sepia(1) hue-rotate(72deg) saturate(4.5);}
+#skel-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#cam-frame.scanning{box-shadow:inset 0 0 60px rgba(0,255,100,.25), 0 0 25px rgba(0,255,100,.35)}
+#cam-frame.positioning{box-shadow:inset 0 0 60px rgba(0,229,255,.2), 0 0 25px rgba(0,229,255,.3)}
+#cam-frame.alarm{box-shadow:inset 0 0 80px rgba(255,34,68,.5), 0 0 30px rgba(255,34,68,.6);
+  border-color:var(--red)}
+#cam-frame.alarm #cam-video{filter:grayscale(1) brightness(1.2) sepia(1) hue-rotate(-50deg) saturate(6)}
+#cam-scanline{position:absolute;left:0;width:100%;height:46px;pointer-events:none;opacity:0;
+  background:linear-gradient(to bottom,transparent,rgba(0,255,100,.55) 50%,transparent);
+  filter:drop-shadow(0 0 10px var(--neon));}
+#cam-frame.scanning #cam-scanline{opacity:1;animation:camSweep 1.6s linear infinite}
+@keyframes camSweep{0%{top:-46px}100%{top:100%}}
+.cam-corner{position:absolute;width:30px;height:30px;border:2px solid var(--neon);pointer-events:none;z-index:2}
+.cam-corner.tl{top:8px;left:8px;border-right:none;border-bottom:none}
+.cam-corner.tr{top:8px;right:8px;border-left:none;border-bottom:none}
+.cam-corner.bl{bottom:8px;left:8px;border-right:none;border-top:none}
+.cam-corner.br{bottom:8px;right:8px;border-left:none;border-top:none}
+#count-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;font-size:clamp(80px,16vw,170px);font-weight:bold;color:var(--neon);
+  text-shadow:0 0 25px var(--neon),0 0 100px rgba(0,255,100,.8);opacity:0;z-index:3;}
+#count-overlay.zoom{animation:numZoom 1s ease-out;opacity:1}
+@keyframes numZoom{0%{transform:scale(2.4);opacity:0;filter:blur(8px)}
+  25%{transform:scale(1);opacity:1;filter:blur(0)}100%{transform:scale(.9);opacity:.95}}
+#count-overlay.urgent{color:var(--amber);text-shadow:0 0 25px var(--amber),0 0 100px rgba(255,180,60,.8)}
+#count-overlay.prep{color:var(--cyan);text-shadow:0 0 25px var(--cyan),0 0 100px rgba(0,229,255,.7);
+  font-size:clamp(60px,11vw,120px)}
+#count-overlay.hold{opacity:1}
+#phase-banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:3;
+  font-size:clamp(10px,1.1vw,13px);letter-spacing:.3em;padding:4px 16px;
+  background:rgba(0,10,5,.75);border:1px solid var(--neon-dim);color:var(--neon-dim);
+  white-space:nowrap;}
+#phase-banner.prep{color:var(--cyan);border-color:rgba(0,229,255,.5)}
+#phase-banner.scan{color:var(--neon);border-color:var(--neon);animation:blink 1.2s steps(2) infinite}
+#nocam{position:absolute;inset:0;display:none;flex-direction:column;gap:10px;z-index:2;
+  align-items:center;justify-content:center;color:var(--neon-dim);font-size:13px;
+  letter-spacing:.2em;background:repeating-linear-gradient(45deg,rgba(0,255,100,.03) 0 12px,transparent 12px 24px);}
+#nocam .big{font-size:34px}
+#cam-frame.nocam-mode #nocam{display:flex}
+
+/* Badge de conformité de posture */
+#pose-status{width:100%;max-width:580px;margin-top:10px;display:flex;align-items:center;
+  justify-content:space-between;border:1px solid var(--neon-dim);padding:8px 14px;
+  font-size:clamp(11px,1.15vw,14px);letter-spacing:.15em;background:rgba(0,255,100,.04);}
+#pose-status .dot{width:12px;height:12px;border-radius:50%;background:var(--neon-dim);
+  box-shadow:0 0 8px currentColor;flex:none;margin-right:10px}
+#pose-status.ok{border-color:var(--neon);color:var(--neon)}
+#pose-status.ok .dot{background:var(--neon);animation:blink 1s steps(2) infinite}
+#pose-status.ko{border-color:var(--amber);color:var(--amber)}
+#pose-status.ko .dot{background:var(--amber)}
+#pose-status.off{opacity:.55}
+#pose-status .left{display:flex;align-items:center}
+#pose-count{font-weight:bold}
+
+/* Jauges */
+#meter-wrap,#hold-wrap{width:100%;max-width:580px;margin-top:10px;text-align:left}
+.meter-head{display:flex;justify-content:space-between;font-size:10px;
+  color:var(--neon-dim);letter-spacing:.22em;margin-bottom:5px;}
+#meter{position:relative;height:14px;border:1px solid var(--neon-dim);
+  background:rgba(0,255,100,.05);overflow:hidden;}
+#meter-fill{position:absolute;left:0;top:0;bottom:0;width:0%;
+  background:linear-gradient(90deg,rgb(0,255,100),#c8ff4d 60%,var(--amber) 80%,var(--red));
+  box-shadow:0 0 12px rgba(0,255,100,.6);transition:width .12s linear;}
+#meter-threshold{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--red);
+  box-shadow:0 0 8px var(--red);}
+#hold-bar{position:relative;height:10px;border:1px solid var(--neon-dim);background:rgba(0,255,100,.05)}
+#hold-fill{position:absolute;left:0;top:0;bottom:0;width:0%;background:var(--neon);
+  box-shadow:0 0 12px var(--neon);transition:width .2s linear;}
+
+#analysis-line{font-size:clamp(11px,1.1vw,13px);color:var(--neon-dim);margin-top:11px;
+  min-height:2.4em;letter-spacing:.16em;max-width:580px;line-height:1.55;}
+#analysis-line.ok{color:var(--neon);animation:blink 1s steps(2) infinite;text-shadow:0 0 10px var(--neon)}
+#analysis-line.wait{color:#9fffc8}
+
+#btn-launch{font-family:var(--mono);text-transform:uppercase;letter-spacing:.18em;
+  font-size:clamp(13px,1.5vw,17px);font-weight:bold;color:var(--bg);background:var(--neon);
+  border:none;padding:13px 30px;cursor:pointer;margin-top:11px;
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);
+  box-shadow:0 0 20px rgba(0,255,100,.6);transition:transform .15s;
+  animation:heartbeat 1.8s ease-in-out infinite;}
+#btn-launch:hover{transform:scale(1.05)}
+#btn-launch.hidden{display:none}
+
+/* ---------- Overlays échec / succès ---------- */
+#fail-overlay{position:fixed;inset:0;z-index:8;pointer-events:none;opacity:0;
+  background:radial-gradient(ellipse at center,rgba(255,34,68,.55),rgba(120,0,15,.85));
+  display:flex;align-items:center;justify-content:center;flex-direction:column;}
+#fail-overlay.show{animation:failFlash 1.4s ease-out}
+@keyframes failFlash{0%,20%,40%{opacity:1}10%,30%{opacity:.3}100%{opacity:0}}
+#fail-overlay .fail-text{font-size:clamp(24px,4.6vw,64px);color:#fff;letter-spacing:.16em;
+  text-shadow:0 0 20px var(--red),0 0 80px var(--red);}
+#fail-overlay .fail-sub{color:#ffccd5;font-size:clamp(12px,1.4vw,18px);margin-top:2vh;letter-spacing:.26em}
+body.shake{animation:shake .5s}
+@keyframes shake{0%,100%{transform:translate(0)}15%{transform:translate(-12px,6px)}
+  30%{transform:translate(10px,-8px)}45%{transform:translate(-8px,-4px)}
+  60%{transform:translate(9px,5px)}75%{transform:translate(-5px,2px)}90%{transform:translate(4px,-3px)}}
+
+#success-overlay{position:fixed;inset:0;z-index:8;pointer-events:none;opacity:0;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2vh;
+  background:radial-gradient(ellipse at center,rgba(0,255,100,.22),rgba(0,20,8,.88));}
+#success-overlay.show{animation:successFlash 2.4s ease-out}
+@keyframes successFlash{0%{opacity:0}12%,80%{opacity:1}100%{opacity:0}}
+#success-overlay .ok-text{font-size:clamp(24px,4.4vw,58px);letter-spacing:.18em;
+  text-shadow:0 0 20px var(--neon),0 0 80px var(--neon);}
+#success-overlay .frag-reveal{font-size:clamp(15px,1.8vw,22px);color:#fff;letter-spacing:.2em}
+#success-overlay .frag-digit{display:inline-block;font-size:clamp(48px,8vw,96px);font-weight:bold;
+  border:2px solid var(--neon);padding:6px 26px;margin-left:14px;color:var(--neon);
+  background:rgba(0,255,100,.08);box-shadow:0 0 30px rgba(0,255,100,.6);
+  text-shadow:0 0 20px var(--neon);}
+
+/* ---------- ÉCRAN 3 : VICTOIRE ---------- */
+#particles{position:fixed;inset:0;z-index:1;pointer-events:none}
+#victory h2{font-size:clamp(22px,3.4vw,46px);letter-spacing:.18em;margin-bottom:3vh;
+  text-shadow:0 0 16px var(--neon),0 0 60px rgba(0,255,100,.6);}
+#final-code{display:flex;gap:2.5vw;margin-bottom:3vh;justify-content:center}
+#final-code .digit{font-size:clamp(58px,11vw,130px);font-weight:bold;padding:1.4vh 2.4vw;
+  border:2px solid var(--neon);background:rgba(0,255,100,.07);
+  box-shadow:0 0 30px rgba(0,255,100,.5),inset 0 0 30px rgba(0,255,100,.15);
+  text-shadow:0 0 25px var(--neon),0 0 90px var(--neon);
+  opacity:0;transform:scale(3) rotate(8deg);
+  animation:digitDrop .6s cubic-bezier(.2,1.6,.4,1) forwards;}
+#final-code .digit:nth-child(1){animation-delay:.4s}
+#final-code .digit:nth-child(2){animation-delay:.9s}
+#final-code .digit:nth-child(3){animation-delay:1.4s}
+#final-code .digit:nth-child(4){animation-delay:1.9s}
+@keyframes digitDrop{to{opacity:1;transform:scale(1) rotate(0)}}
+#victory .outro{color:#8fffbe;font-size:clamp(12px,1.3vw,16px);letter-spacing:.25em;opacity:.85}
+#victory .team{margin-top:2.2vh;font-size:clamp(14px,1.7vw,21px);color:#fff;text-shadow:0 0 12px var(--neon);}
+
+/* ---------- Glitch ---------- */
+.glitch{position:relative;display:inline-block}
+.glitching .glitch::before,.glitching .glitch::after{
+  content:attr(data-text);position:absolute;left:0;top:0;width:100%;}
+.glitching .glitch::before{color:#0ff;clip-path:inset(20% 0 55% 0);animation:glitchShift .35s steps(3) 3;}
+.glitching .glitch::after{color:var(--red);clip-path:inset(60% 0 15% 0);animation:glitchShift .35s steps(3) 3 reverse;}
+@keyframes glitchShift{0%{transform:translate(-6px,2px)}33%{transform:translate(5px,-3px)}
+  66%{transform:translate(-3px,1px)}100%{transform:translate(0)}}
+body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
+@keyframes gridJolt{0%{transform:translateX(0)}25%{transform:translateX(-14px) skewX(2deg)}
+  50%{transform:translateX(10px)}75%{transform:translateX(-6px) skewX(-1deg)}100%{transform:translateX(0)}}
+
+/* ---------- Panneau Maître du Jeu ---------- */
+#gm-help{position:fixed;bottom:14px;right:14px;z-index:9;font-size:11px;color:var(--neon-dim);
+  text-align:left;background:rgba(0,10,5,.95);border:1px solid var(--neon-faint);
+  padding:12px 15px;display:none;line-height:2;text-transform:none;min-width:300px;}
+#gm-help.visible{display:block}
+#gm-help b{color:var(--neon)}
+#gm-help .row{display:flex;justify-content:space-between;align-items:center;gap:14px}
+#gm-help input[type=range]{width:110px;accent-color:rgb(0,255,100)}
+#gm-hint{position:fixed;bottom:8px;left:12px;z-index:9;font-size:10px;color:rgba(0,255,100,.18);}
+
+@media (prefers-reduced-motion: reduce){
+  *,#laser,#grid-bg{animation-duration:.01ms !important;animation-iteration-count:1 !important}}
+</style>
+</head>
+<body>
+
+<div id="grid-bg"></div>
+<div id="laser"></div>
+<div id="vignette"></div>
+<div id="crt"></div>
+<canvas id="particles"></canvas>
+
+<div id="statusbar">
+  <span>SYS://ALYZ-SECURE-TERM &gt; NODE.7F</span>
+  <span class="blink">⚠ INTRUSION — PROF. RAIDEUR</span>
+  <div id="fragments">
+    <span class="flabel">CODE :</span>
+    <div class="frag" id="frag-0">?</div><div class="frag" id="frag-1">?</div>
+    <div class="frag" id="frag-2">?</div><div class="frag" id="frag-3">?</div>
+  </div>
+  <span id="clock">--:--:--</span>
+</div>
+
+<div id="fail-overlay">
+  <div class="fail-text" id="fail-title">⚠ MOUVEMENT DÉTECTÉ ⚠</div>
+  <div class="fail-sub">LE SCANNER A REPÉRÉ UNE ANOMALIE — ON RECOMMENCE</div>
+</div>
+<div id="success-overlay">
+  <div class="ok-text">✔ POSTURE VALIDÉE</div>
+  <div class="frag-reveal">FRAGMENT DE CODE RÉCUPÉRÉ <span class="frag-digit" id="frag-digit">8</span></div>
+</div>
+
+<!-- ================= ÉCRAN 1 : ACCUEIL ================= -->
+<section id="home" class="screen active">
+  <div class="tech-box"><span class="corner"></span>
+    <svg id="spine" viewBox="0 0 100 140" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" stroke="rgb(0,255,100)" stroke-width="3">
+        <ellipse class="vert" cx="50" cy="12" rx="16" ry="7"/>
+        <ellipse class="vert" cx="50" cy="31" rx="18" ry="7.5"/>
+        <ellipse class="vert" cx="50" cy="51" rx="20" ry="8"/>
+        <ellipse class="vert" cx="50" cy="72" rx="21" ry="8.5"/>
+        <ellipse class="vert" cx="50" cy="93" rx="20" ry="8"/>
+        <ellipse class="vert" cx="50" cy="113" rx="18" ry="7.5"/>
+        <ellipse class="vert" cx="50" cy="131" rx="15" ry="6.5"/>
+      </g>
+      <line x1="50" y1="5" x2="50" y2="138" stroke="rgba(0,255,100,.4)" stroke-width="2" stroke-dasharray="3 5"/>
+    </svg>
+    <h1 class="title glitch" data-text="PROTOCOLE DÉCRISTALLISATION">PROTOCOLE DÉCRISTALLISATION</h1>
+    <div class="subtitle">// UNITÉ D'INTERVENTION ERGONOMIQUE — NIVEAU 5 //</div>
+    <div id="typewriter"><span id="tw-text"></span><span class="cursor">&nbsp;</span></div>
+
+    <div id="howto">
+      <div class="howto-card">
+        <div class="ic">🕵️</div><div class="n">ÉTAPE 1</div>
+        <p>Un hologramme vous montre la posture secrète. Vous avez 10 secondes de mise en position, face à la caméra.</p>
+      </div>
+      <div class="howto-card">
+        <div class="ic">🤖</div><div class="n">ÉTAPE 2</div>
+        <p>L'IA analyse vos squelettes en direct : mauvaise posture ou mouvement pendant le scan = alarme, et tout recommence !</p>
+      </div>
+      <div class="howto-card">
+        <div class="ic">🔓</div><div class="n">ÉTAPE 3</div>
+        <p>Chaque posture réussie révèle un fragment du code. 4 fragments = Professeur Raideur neutralisé.</p>
+      </div>
+    </div>
+
+    <button id="btn-scan">[ ACTIVER LE SCANNER BIOMÉTRIQUE ]</button>
+    <div id="cam-status">Le navigateur va demander l'accès à la caméra — cliquez sur « Autoriser ».</div>
+  </div>
+</section>
+
+<!-- ================= ÉCRAN 2 : POSTURES ================= -->
+<section id="game" class="screen">
+  <div class="step-tracker">
+    <span class="step-label" id="step-label">POSTURE 1/4</span>
+    <div class="step-dot" id="tracker-0"></div><div class="step-dot" id="tracker-1"></div>
+    <div class="step-dot" id="tracker-2"></div><div class="step-dot" id="tracker-3"></div>
+  </div>
+  <div class="tech-box"><span class="corner"></span>
+    <h2 id="posture-name" class="glitch" data-text=""></h2>
+    <div id="posture-sub"></div>
+
+    <div id="game-grid">
+      <div id="holo-panel">
+        <div class="panel-title"><span class="rec"></span> HOLOGRAMME DE DÉMONSTRATION</div>
+        <div id="holo-stage">
+
+          <svg class="holo-svg" id="holo-0" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <circle class="head" cx="82" cy="46" r="17"/>
+            <path class="limb" d="M82 63 L82 145"/>
+            <path class="limb" d="M82 145 L64 225 M82 145 L100 225"/>
+            <path class="limb" d="M82 84 L134 84 L186 84"/>
+            <g class="j-fingers">
+              <path class="limb" d="M186 84 L186 58"/>
+              <path class="limb" d="M186 84 L196 62" stroke-width="4"/>
+              <path class="limb" d="M186 84 L177 60" stroke-width="4"/>
+            </g>
+            <g class="j-pullhand">
+              <path class="limb" d="M82 84 C110 122 160 108 184 74"/>
+              <circle class="hand" cx="186" cy="72" r="7"/>
+            </g>
+            <circle class="zone" cx="186" cy="84" r="20"/>
+            <path class="arrow" d="M212 62 Q222 84 210 104"/>
+            <polygon class="arrowhead" points="210,104 206,92 218,95"/>
+          </svg>
+
+          <svg class="holo-svg" id="holo-1" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <g class="prop">
+              <circle cx="196" cy="34" r="12"/>
+              <path d="M196 14 v-8 M196 62 v-8 M176 34 h-8 M224 34 h-8 M182 20 l-6-6 M210 48 l6 6 M210 20 l6-6 M182 48 l-6 6" stroke-width="2.5"/>
+            </g>
+            <circle class="head" cx="100" cy="46" r="17"/>
+            <path class="limb" d="M100 63 L100 145"/>
+            <path class="limb" d="M100 145 L82 225 M100 145 L118 225"/>
+            <g class="j-armL">
+              <path class="limb" d="M100 84 L58 84 L58 40"/>
+              <circle class="hand" cx="58" cy="34" r="6"/>
+            </g>
+            <g class="j-armR">
+              <path class="limb" d="M100 84 L142 84 L142 40"/>
+              <circle class="hand" cx="142" cy="34" r="6"/>
+            </g>
+            <circle class="zone j-chest" cx="100" cy="105" r="18"/>
+            <path class="arrow" d="M70 110 H44"/>
+            <polygon class="arrowhead" points="42,110 52,104 52,116"/>
+            <path class="arrow" d="M130 110 H156"/>
+            <polygon class="arrowhead" points="158,110 148,104 148,116"/>
+          </svg>
+
+          <svg class="holo-svg" id="holo-2" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <g class="j-head">
+              <circle class="head" cx="100" cy="44" r="17"/>
+              <path class="prop" d="M88 28 L92 18 L100 26 L108 18 L112 28" stroke-width="2.5"/>
+            </g>
+            <path class="limb" d="M100 61 L100 145"/>
+            <path class="limb" d="M100 145 L82 225 M100 145 L118 225"/>
+            <path class="limb" d="M100 84 L68 138"/>
+            <path class="limb" d="M100 84 L132 138"/>
+            <circle class="zone" cx="100" cy="66" r="15"/>
+            <path class="arrow" d="M66 44 Q100 6 134 44"/>
+            <polygon class="arrowhead" points="136,46 126,36 138,34"/>
+            <polygon class="arrowhead" points="64,46 62,34 74,36"/>
+          </svg>
+
+          <svg class="holo-svg" id="holo-3" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <circle class="head" cx="100" cy="46" r="17"/>
+            <path class="limb" d="M100 63 L100 145"/>
+            <path class="limb" d="M100 145 L80 225 M100 145 L122 225"/>
+            <g class="prop">
+              <path d="M42 50 Q16 84 42 118"/>
+              <g class="j-string"><path d="M42 50 L42 118" stroke-width="2"/></g>
+            </g>
+            <path class="limb" d="M100 84 L42 84"/>
+            <circle class="hand" cx="42" cy="84" r="7"/>
+            <g class="j-draw">
+              <path class="limb" d="M100 84 L134 90 L162 96"/>
+              <circle class="hand" cx="164" cy="96" r="7"/>
+            </g>
+            <ellipse class="zone" cx="112" cy="86" rx="22" ry="16"/>
+            <path class="arrow" d="M150 70 Q176 78 188 96"/>
+            <polygon class="arrowhead" points="190,99 178,96 186,86"/>
+          </svg>
+
+        </div>
+        <div id="zone-tag">ZONE CIBLE : —</div>
+        <div id="instructions"></div>
+      </div>
+
+      <div id="cam-panel">
+        <div class="panel-title"><span class="rec"></span> FLUX BIOMÉTRIQUE — CAMÉRA 01</div>
+        <div id="cam-frame">
+          <video id="cam-video" autoplay playsinline muted></video>
+          <canvas id="skel-canvas"></canvas>
+          <div id="cam-scanline"></div>
+          <div id="phase-banner">EN ATTENTE</div>
+          <div class="cam-corner tl"></div><div class="cam-corner tr"></div>
+          <div class="cam-corner bl"></div><div class="cam-corner br"></div>
+          <div id="count-overlay">5</div>
+          <div id="nocam"><span class="big">📡</span><span>CAMÉRA INDISPONIBLE — MODE MANUEL</span>
+            <span style="font-size:10px;opacity:.7">(le maître du jeu pilote au clavier)</span></div>
+        </div>
+
+        <div id="pose-status" class="off">
+          <span class="left"><span class="dot"></span><span id="pose-label">VÉRIFICATION IA : INITIALISATION…</span></span>
+          <span id="pose-count"></span>
+        </div>
+
+        <div id="meter-wrap">
+          <div class="meter-head"><span>NIVEAU D'AGITATION</span><span id="meter-val">0%</span></div>
+          <div id="meter">
+            <div id="meter-fill"></div>
+            <div id="meter-threshold" style="left:30%"></div>
+          </div>
+        </div>
+        <div id="hold-wrap">
+          <div class="meter-head"><span>STABILITÉ DU MAINTIEN</span><span id="hold-val">0/7 s</span></div>
+          <div id="hold-bar"><div id="hold-fill"></div></div>
+        </div>
+
+        <div id="analysis-line" class="wait">PLACEZ-VOUS FACE À LA CAMÉRA — REGARDEZ L'HOLOGRAMME</div>
+        <button id="btn-launch">▶ LANCER LE PROTOCOLE</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ÉCRAN 3 : VICTOIRE ================= -->
+<section id="victory" class="screen">
+  <div class="tech-box"><span class="corner"></span>
+    <h2 class="glitch" data-text="SYSTÈME DÉVERROUILLÉ — ARTICULATIONS LIBÉRÉES">SYSTÈME DÉVERROUILLÉ — ARTICULATIONS LIBÉRÉES</h2>
+    <div id="final-code">
+      <div class="digit">8</div><div class="digit">2</div>
+      <div class="digit">7</div><div class="digit">4</div>
+    </div>
+    <div class="outro">// PROFESSEUR RAIDEUR NEUTRALISÉ — MISSION ACCOMPLIE //</div>
+    <div class="team">🏆 BRAVO AGENTS ! VOS ARTICULATIONS VOUS DISENT MERCI</div>
+  </div>
+</section>
+
+<div id="gm-hint">[H]</div>
+<div id="gm-help">
+  <b>PANNEAU MAÎTRE DU JEU</b><br>
+  <b>ESPACE</b> — Lancer le protocole &nbsp;|&nbsp; <b>ENTRÉE</b> — Forcer OK<br>
+  <b>BACKSPACE / R</b> — Forcer l'échec<br>
+  <b>M</b> — Détection mouvement : <b id="gm-detect">ON</b><br>
+  <b>P</b> — Vérification posture IA : <b id="gm-pose">…</b><br>
+  <div class="row"><span>Sensibilité mouvement</span>
+    <input type="range" id="gm-sens" min="2" max="30" step="1" value="9"><b id="gm-sens-val">9</b></div>
+  <div class="row"><span>Mise en position (s)</span>
+    <input type="range" id="gm-prep" min="3" max="25" step="1" value="10"><b id="gm-prep-val">10</b></div>
+  <div class="row"><span>Durée du maintien (s)</span>
+    <input type="range" id="gm-hold" min="3" max="15" step="1" value="7"><b id="gm-hold-val">7</b></div>
+  <b>H</b> — Masquer ce panneau
+</div>
+
+<canvas id="det-canvas" width="96" height="54" style="display:none"></canvas>
+
+<script>
+/* =====================================================
+   ESCAPE GAME TMS v4
+   - Vérification de POSTURE par IA (MoveNet MultiPose, jusqu'à 6 personnes)
+   - Détection de MOUVEMENT par différence d'images
+   - Déroulé : préparation libre → mise en position (10 s) → scan (7 s)
+   - Secours : tout est pilotable au clavier (H = panneau)
+   ===================================================== */
+'use strict';
+
+// ---------- DONNÉES ----------
+// checkPose reçoit les keypoints MoveNet (0:nez 1:œilG 2:œilD 3:oreilleG 4:oreilleD
+// 5:épauleG 6:épauleD 7:coudeG 8:coudeD 9:poignetG 10:poignetD 11:hancheG 12:hancheD)
+const POSTURES = [
+  { name:"LE GRAND SPHINX",
+    sub:"Étirement des poignets — pour tapoteurs de claviers compulsifs",
+    zone:"POIGNETS & AVANT-BRAS", code:"8",
+    steps:[
+      "Tendez un bras devant vous, paume vers le ciel ☝️",
+      "Avec l'autre main, saisissez vos doigts et tirez doucement vers le bas",
+      "Mains jointes devant vous, bien visibles de la caméra… et on ne bouge plus !"
+    ],
+    check:(k,sw)=>{ // deux poignets proches l'un de l'autre, devant le buste, entre épaules et hanches
+      const wl=k[9], wr=k[10], sl=k[5], sr=k[6], hl=k[11], hr=k[12];
+      if(!vis(wl,wr,sl,sr)) return null;
+      const d = dist(wl,wr);
+      const midShoulderY = (sl.y+sr.y)/2;
+      const hipY = vis(hl,hr) ? (hl.y+hr.y)/2 : midShoulderY + sw*1.4;
+      const midX = (sl.x+sr.x)/2;
+      const wristsMidX = (wl.x+wr.x)/2, wristsMidY = (wl.y+wr.y)/2;
+      return d < sw*0.75
+        && wristsMidY > midShoulderY - sw*0.3 && wristsMidY < hipY + sw*0.2
+        && Math.abs(wristsMidX - midX) < sw*1.1;
+    }},
+  { name:"LE CACTUS AU SOLEIL",
+    sub:"Ouverture thoracique — anti dos rond certifié",
+    zone:"POITRINE & ÉPAULES", code:"2",
+    steps:[
+      "Levez les bras en cactus : coudes à hauteur d'épaules, pliés à 90° 🌵",
+      "Mains vers le ciel, poussez les coudes vers l'arrière",
+      "Ouvrez grand la poitrine, respirez… et ne bougez plus !"
+    ],
+    check:(k,sw)=>{ // coudes ~hauteur épaules, poignets au-dessus des coudes
+      const el=k[7], er=k[8], wl=k[9], wr=k[10], sl=k[5], sr=k[6];
+      if(!vis(el,er,wl,wr,sl,sr)) return null;
+      const shoulderY = (sl.y+sr.y)/2;
+      const elbowsOk = Math.abs(el.y - shoulderY) < sw*0.55 && Math.abs(er.y - shoulderY) < sw*0.55;
+      const wristsUp = wl.y < el.y - sw*0.12 && wr.y < er.y - sw*0.12;
+      return elbowsOk && wristsUp;
+    }},
+  { name:"L'OISEAU IMPÉRIAL",
+    sub:"Décompression des cervicales — spécial post-réunion interminable",
+    zone:"NUQUE & CERVICALES", code:"7",
+    steps:[
+      "Redressez-vous, épaules basses, bras le long du corps 🦅",
+      "Inclinez lentement la tête : l'oreille vers l'épaule (sans forcer)",
+      "Gardez la tête penchée, majestueux… le scanner vous observe"
+    ],
+    check:(k,sw)=>{ // tête inclinée : ligne des yeux nettement penchée
+      const eyeL=k[1], eyeR=k[2];
+      if(!vis(eyeL,eyeR)) return null;
+      const dx = Math.abs(eyeL.x - eyeR.x), dy = Math.abs(eyeL.y - eyeR.y);
+      if(dx < 4) return null;
+      const angle = Math.atan2(dy, dx) * 180/Math.PI;
+      return angle > 14; // ≈ tête penchée d'au moins ~14°
+    }},
+  { name:"L'ARCHER AGILE",
+    sub:"Étirement du haut du dos — pour porteurs de cartons héroïques",
+    zone:"HAUT DU DOS & OMOPLATES", code:"4",
+    steps:[
+      "Tendez un bras sur le côté, poing fermé : c'est votre arc 🏹",
+      "Ramenez l'autre poing contre votre poitrine, coude tiré en arrière",
+      "Serrez les omoplates, gardez la tension… immobiles !"
+    ],
+    check:(k,sw)=>{ // un bras tendu latéralement à hauteur d'épaule, l'autre poignet près du buste
+      const sl=k[5], sr=k[6], wl=k[9], wr=k[10];
+      if(!vis(sl,sr,wl,wr)) return null;
+      const midX=(sl.x+sr.x)/2, shoulderY=(sl.y+sr.y)/2;
+      const extended = w => Math.abs(w.x - midX) > sw*1.15 && Math.abs(w.y - shoulderY) < sw*0.6;
+      const atChest  = w => Math.abs(w.x - midX) < sw*0.75 && Math.abs(w.y - shoulderY) < sw*0.85;
+      return (extended(wl) && atChest(wr)) || (extended(wr) && atChest(wl));
+    }}
+];
+function vis(...kps){ return kps.every(p => p && p.score > 0.3); }
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+// ---------- RÉGLAGES (modifiables via panneau H) ----------
+let PREP_SECONDS = 10;   // temps de mise en position
+let HOLD_SECONDS = 7;    // durée du maintien scanné
+const GRACE_MS = 900;    // tolérance au démarrage du scan
+const FAIL_FRAMES = 3;   // images consécutives de mouvement pour échouer
+const POSE_FAIL_MS = 1300; // durée de non-conformité tolérée pendant le scan
+
+// ---------- ÉTAT ----------
+let screen = 'home';
+let postureIndex = 0;
+let phase = 'prep';      // prep | positioning | scanning | captured | transition
+let scanStartAt = 0;
+let countTimer = null;
+let secondsLeft = 0;
+let camActive = false;
+let autoDetect = true;   // détection de mouvement
+let poseAvailable = false, poseEnabled = true;
+let poseDetector = null;
+let poseConform = null;  // true/false/null(inconnu)
+let poseCounts = {ok:0, total:0};
+let poseBadSince = 0;    // timestamp de début de non-conformité pendant le scan
+let threshold = 9;
+let overFrames = 0;
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const screens = { home:$('home'), game:$('game'), victory:$('victory') };
+const video = $('cam-video');
+const detCanvas = $('det-canvas');
+const detCtx = detCanvas.getContext('2d', { willReadFrequently:true });
+const skel = $('skel-canvas');
+const skelCtx = skel.getContext('2d');
+let prevFrame = null;
+
+setInterval(()=>{ $('clock').textContent = new Date().toLocaleTimeString('fr-FR'); },500);
+
+// =====================================================
+// AUDIO
+// =====================================================
+let AC = null;
+function audio(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); return AC; }
+
+function playBeep(urgent){
+  const ctx = audio(), t = ctx.currentTime;
+  const make = (start, freq)=>{
+    const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type='sine'; o.frequency.setValueAtTime(freq, start);
+    o.frequency.exponentialRampToValueAtTime(freq*0.72, start+0.16);
+    f.type='bandpass'; f.frequency.value=freq; f.Q.value=6;
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(0.5, start+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, start+0.22);
+    o.connect(f).connect(g).connect(ctx.destination);
+    o.start(start); o.stop(start+0.25);
+  };
+  if(urgent){ make(t, 1320); make(t+0.13, 1320); }
+  else make(t, 880);
+}
+function playPrepTick(){ // tic discret pendant la mise en position
+  const ctx = audio(), t = ctx.currentTime;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type='sine'; o.frequency.value=440;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.15, t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+0.12);
+  o.connect(g).connect(ctx.destination);
+  o.start(t); o.stop(t+0.14);
+}
+function playBuzzer(){
+  const ctx = audio(), t = ctx.currentTime, dur = 1.1;
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+  const g = ctx.createGain(), shaper = ctx.createWaveShaper();
+  o1.type='sawtooth'; o1.frequency.setValueAtTime(70, t);
+  o1.frequency.linearRampToValueAtTime(48, t+dur);
+  o2.type='square'; o2.frequency.setValueAtTime(73, t);
+  o2.frequency.linearRampToValueAtTime(50, t+dur);
+  const curve = new Float32Array(256);
+  for(let i=0;i<256;i++){ const x = i/128-1; curve[i]=Math.tanh(x*8); }
+  shaper.curve = curve;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.65, t+0.03);
+  g.gain.setValueAtTime(0.65, t+dur*0.6);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+  o1.connect(shaper); o2.connect(shaper); shaper.connect(g).connect(ctx.destination);
+  o1.start(t); o2.start(t); o1.stop(t+dur); o2.stop(t+dur);
+}
+function playSuccess(){
+  const ctx = audio(), t = ctx.currentTime;
+  const notes = [523.25, 659.25, 783.99, 1046.5];
+  notes.forEach((f,i)=>{
+    const start = t + i*0.11;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type='triangle'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(0.35, start+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, start+0.55);
+    const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+    o2.type='sine'; o2.frequency.value=f*2;
+    g2.gain.setValueAtTime(0.0001, start);
+    g2.gain.exponentialRampToValueAtTime(0.12, start+0.015);
+    g2.gain.exponentialRampToValueAtTime(0.0001, start+0.5);
+    o.connect(g).connect(ctx.destination);
+    o2.connect(g2).connect(ctx.destination);
+    o.start(start); o.stop(start+0.6);
+    o2.start(start); o2.stop(start+0.55);
+  });
+}
+function playVictoryFanfare(){
+  const ctx = audio(), t = ctx.currentTime;
+  const seq = [[523.25,0],[659.25,.12],[783.99,.24],[1046.5,.36],[1318.5,.55],[1567.98,.75],[2093,.95]];
+  seq.forEach(([f,d])=>{
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type='triangle'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001, t+d);
+    g.gain.exponentialRampToValueAtTime(0.4, t+d+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+d+0.9);
+    o.connect(g).connect(ctx.destination);
+    o.start(t+d); o.stop(t+d+1);
+  });
+}
+
+// =====================================================
+// CAMÉRA
+// =====================================================
+async function initCamera(){
+  const status = $('cam-status');
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    status.textContent = "⚠ Caméra non disponible ici (ouvrez la page en HTTPS ou localhost) — mode manuel clavier activé.";
+    status.classList.add('err');
+    return false;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:{ideal:640}, height:{ideal:360}, facingMode:'user' }, audio:false });
+    video.srcObject = stream;
+    await video.play();
+    camActive = true;
+    requestAnimationFrame(motionLoop);
+    return true;
+  }catch(err){
+    status.textContent = "⚠ Accès caméra refusé — mode manuel clavier activé. (" + err.name + ")";
+    status.classList.add('err');
+    return false;
+  }
+}
+
+// =====================================================
+// IA DE POSTURE (MoveNet MultiPose — jusqu'à 6 personnes)
+// =====================================================
+async function initPose(){
+  const status = $('cam-status');
+  try{
+    if(typeof tf === 'undefined' || typeof poseDetection === 'undefined')
+      throw new Error('librairies IA non chargées (hors-ligne ?)');
+    status.textContent = 'Chargement du module IA de posture…';
+    await tf.ready();
+    poseDetector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      { modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING, enableTracking:true });
+    poseAvailable = true;
+    $('gm-pose').textContent = 'ON';
+    poseLoop();
+    return true;
+  }catch(err){
+    poseAvailable = false; poseEnabled = false;
+    $('gm-pose').textContent = 'INDISPO';
+    setPoseStatus('off', 'VÉRIFICATION IA INDISPONIBLE — CONTRÔLE VISUEL PAR L\'OPÉRATEUR', '');
+    return false;
+  }
+}
+
+async function poseLoop(){
+  while(camActive && poseAvailable){
+    if(poseEnabled && video.readyState >= 2 && screen === 'game'){
+      try{
+        const poses = await poseDetector.estimatePoses(video, {maxPoses:6});
+        evaluatePoses(poses);
+        drawSkeletons(poses);
+      }catch(e){ /* frame ratée : on continue */ }
+    } else {
+      skelCtx.clearRect(0,0,skel.width,skel.height);
+    }
+    await new Promise(r=>setTimeout(r, 120)); // ~8 analyses/s
+  }
+}
+
+function evaluatePoses(poses){
+  const p = POSTURES[postureIndex];
+  let ok = 0, total = 0;
+  for(const pose of poses){
+    if(pose.score !== undefined && pose.score < 0.2) continue;
+    const k = pose.keypoints;
+    const sl = k[5], sr = k[6];
+    if(!vis(sl,sr)) continue;
+    const sw = Math.max(dist(sl,sr), 20); // largeur d'épaules = unité de mesure
+    const res = p.check(k, sw);
+    if(res === null) continue;
+    total++;
+    if(res) ok++;
+  }
+  poseCounts = {ok, total};
+  poseConform = total === 0 ? null : (ok === total);
+  // Mise à jour du badge
+  if(!poseEnabled){ setPoseStatus('off','VÉRIFICATION IA DÉSACTIVÉE',''); return; }
+  if(total === 0){
+    setPoseStatus('ko','AUCUN AGENT DÉTECTÉ — APPROCHEZ-VOUS DE LA CAMÉRA','');
+  } else if(ok === total){
+    setPoseStatus('ok','POSTURE CONFORME', ok + '/' + total + ' AGENTS ✔');
+  } else {
+    setPoseStatus('ko','POSTURE NON CONFORME', ok + '/' + total + ' AGENTS');
+  }
+  // Échec si non-conformité prolongée pendant le scan
+  if(phase === 'scanning' && poseEnabled){
+    const now = performance.now();
+    if(now - scanStartAt > GRACE_MS && poseConform === false){
+      if(!poseBadSince) poseBadSince = now;
+      else if(now - poseBadSince > POSE_FAIL_MS) failPosture('pose');
+    } else {
+      poseBadSince = 0;
+    }
+  }
+}
+
+function setPoseStatus(cls, label, count){
+  const el = $('pose-status');
+  el.classList.remove('ok','ko','off');
+  el.classList.add(cls);
+  $('pose-label').textContent = label;
+  $('pose-count').textContent = count;
+}
+
+// Squelettes néon superposés à la vidéo (effet miroir)
+const BONES = [[5,7],[7,9],[6,8],[8,10],[5,6],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16],[0,5],[0,6]];
+function drawSkeletons(poses){
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 360;
+  if(skel.width !== skel.clientWidth) skel.width = skel.clientWidth;
+  if(skel.height !== skel.clientHeight) skel.height = skel.clientHeight;
+  const W = skel.width, H = skel.height;
+  // reproduit object-fit:cover + miroir
+  const scale = Math.max(W/vw, H/vh);
+  const ox = (W - vw*scale)/2, oy = (H - vh*scale)/2;
+  const map = p => ({ x: W - (p.x*scale + ox), y: p.y*scale + oy });
+  skelCtx.clearRect(0,0,W,H);
+  for(const pose of poses){
+    const k = pose.keypoints;
+    const sl=k[5], sr=k[6];
+    let conformThis = null;
+    if(vis(sl,sr)){
+      const sw = Math.max(dist(sl,sr),20);
+      conformThis = POSTURES[postureIndex].check(k, sw);
+    }
+    const col = conformThis === true ? 'rgba(0,255,100,.95)'
+              : conformThis === false ? 'rgba(255,179,64,.95)'
+              : 'rgba(0,229,255,.8)';
+    skelCtx.strokeStyle = col; skelCtx.fillStyle = col;
+    skelCtx.lineWidth = 3; skelCtx.shadowBlur = 10; skelCtx.shadowColor = col;
+    for(const [a,b] of BONES){
+      if(!vis(k[a],k[b])) continue;
+      const pa = map(k[a]), pb = map(k[b]);
+      skelCtx.beginPath(); skelCtx.moveTo(pa.x,pa.y); skelCtx.lineTo(pb.x,pb.y); skelCtx.stroke();
+    }
+    for(const kp of k){
+      if(!kp || kp.score < 0.3) continue;
+      const pt = map(kp);
+      skelCtx.beginPath(); skelCtx.arc(pt.x,pt.y,4,0,Math.PI*2); skelCtx.fill();
+    }
+  }
+  skelCtx.shadowBlur = 0;
+}
+
+// =====================================================
+// DÉTECTION DE MOUVEMENT (différence d'images)
+// =====================================================
+let lastSample = 0;
+let smoothScore = 0;
+function motionLoop(ts){
+  if(camActive){
+    if(ts - lastSample > 66){
+      lastSample = ts;
+      analyseFrame();
+    }
+    requestAnimationFrame(motionLoop);
+  }
+}
+function analyseFrame(){
+  const W = detCanvas.width, H = detCanvas.height;
+  if(video.readyState < 2) return;
+  detCtx.drawImage(video, 0, 0, W, H);
+  const frame = detCtx.getImageData(0, 0, W, H).data;
+  if(prevFrame){
+    let changed = 0;
+    const total = W*H;
+    for(let i=0;i<frame.length;i+=4){
+      const l1 = (frame[i] + frame[i+1] + frame[i+2]);
+      const l2 = (prevFrame[i] + prevFrame[i+1] + prevFrame[i+2]);
+      if(Math.abs(l1 - l2) > 90) changed++;
+    }
+    const raw = changed / total * 100;
+    smoothScore = smoothScore * 0.6 + raw * 0.4;
+    updateMeter(smoothScore);
+    if(phase === 'scanning' && autoDetect){
+      const elapsed = performance.now() - scanStartAt;
+      if(elapsed > GRACE_MS){
+        if(smoothScore > threshold){
+          overFrames++;
+          if(overFrames >= FAIL_FRAMES) failPosture('motion');
+        } else overFrames = 0;
+      }
+    }
+  }
+  prevFrame = new Uint8ClampedArray(frame);
+}
+function updateMeter(score){
+  const pct = Math.min(score / (threshold*2.2) * 100, 100);
+  $('meter-fill').style.width = pct + '%';
+  $('meter-val').textContent = score.toFixed(1) + '%';
+  $('meter-threshold').style.left = (threshold / (threshold*2.2) * 100) + '%';
+}
+
+// =====================================================
+// MACHINE À ÉCRIRE
+// =====================================================
+const TW_MSG = "ATTENTION : Le Professeur Raideur a verrouillé vos articulations. Protocole de décristallisation requis.";
+let twIdx = 0;
+function typeWriter(){
+  if(twIdx <= TW_MSG.length){
+    $('tw-text').textContent = TW_MSG.slice(0, twIdx);
+    twIdx++;
+    setTimeout(typeWriter, 40 + Math.random()*40);
+  }
+}
+setTimeout(typeWriter, 700);
+
+// =====================================================
+// TRANSITIONS
+// =====================================================
+function showScreen(name){
+  document.body.classList.add('transition-glitch','glitching');
+  setTimeout(()=>{
+    Object.values(screens).forEach(s=>s.classList.remove('active'));
+    screens[name].classList.add('active');
+    screen = name;
+  },180);
+  setTimeout(()=>document.body.classList.remove('transition-glitch','glitching'),900);
+}
+
+// =====================================================
+// DÉROULÉ DES POSTURES
+// prep (libre) → positioning (compte à rebours cyan, sans risque)
+// → scanning (compte à rebours vert, détection active) → captured
+// =====================================================
+function loadPosture(){
+  const p = POSTURES[postureIndex];
+  const nameEl = $('posture-name');
+  nameEl.textContent = p.name;
+  nameEl.dataset.text = p.name;
+  $('posture-sub').textContent = p.sub;
+  $('step-label').textContent = 'POSTURE ' + (postureIndex+1) + '/4';
+  $('zone-tag').textContent = 'ZONE CIBLE : ' + p.zone;
+  for(let i=0;i<4;i++) $('holo-'+i).classList.toggle('active', i===postureIndex);
+  $('instructions').innerHTML = p.steps.map((s,i)=>
+    '<div class="instr"><span class="num">'+(i+1)+'</span><span>'+s+'</span></div>').join('');
+  for(let i=0;i<4;i++){
+    const d = $('tracker-'+i);
+    d.classList.toggle('done', i < postureIndex);
+    d.classList.toggle('current', i === postureIndex);
+  }
+  enterPrepPhase();
+}
+
+function setBanner(text, cls){
+  const b = $('phase-banner');
+  b.textContent = text;
+  b.classList.remove('prep','scan');
+  if(cls) b.classList.add(cls);
+}
+
+function enterPrepPhase(){
+  phase = 'prep';
+  clearInterval(countTimer); countTimer = null;
+  overFrames = 0; poseBadSince = 0;
+  $('cam-frame').classList.remove('scanning','alarm','positioning');
+  const co = $('count-overlay');
+  co.classList.remove('zoom','urgent','hold','prep'); co.textContent = '';
+  $('hold-fill').style.width = '0%';
+  $('hold-val').textContent = '0/' + HOLD_SECONDS + ' s';
+  $('btn-launch').classList.remove('hidden');
+  setBanner('EN ATTENTE — ÉTUDIEZ L\'HOLOGRAMME', '');
+  const al = $('analysis-line');
+  al.classList.remove('ok'); al.classList.add('wait');
+  al.textContent = 'QUAND VOUS ÊTES PRÊTS : LANCEZ LE PROTOCOLE (' + PREP_SECONDS + ' S DE MISE EN POSITION, PUIS ' + HOLD_SECONDS + ' S DE SCAN)';
+}
+
+function startProtocol(){
+  if(phase !== 'prep') return;
+  phase = 'positioning';
+  secondsLeft = PREP_SECONDS;
+  $('btn-launch').classList.add('hidden');
+  $('cam-frame').classList.add('positioning');
+  setBanner('MISE EN POSITION — PRENEZ LA POSTURE', 'prep');
+  const al = $('analysis-line');
+  al.classList.remove('wait');
+  al.textContent = 'PRENEZ LA POSTURE MAINTENANT — LE SCAN DÉMARRE À LA FIN DU DÉCOMPTE';
+  positioningTick();
+  countTimer = setInterval(positioningTick, 1000);
+}
+
+function positioningTick(){
+  if(phase !== 'positioning') return;
+  if(secondsLeft <= 0){ beginScan(); return; }
+  const co = $('count-overlay');
+  co.textContent = secondsLeft;
+  co.classList.add('prep');
+  co.classList.remove('zoom','urgent'); void co.offsetWidth; co.classList.add('zoom');
+  playPrepTick();
+  secondsLeft--;
+}
+
+function beginScan(){
+  clearInterval(countTimer); countTimer = null;
+  phase = 'scanning';
+  scanStartAt = performance.now();
+  secondsLeft = HOLD_SECONDS;
+  overFrames = 0; poseBadSince = 0; smoothScore = 0;
+  $('cam-frame').classList.remove('positioning');
+  $('cam-frame').classList.add('scanning');
+  setBanner('SCAN EN COURS — NE BOUGEZ PLUS', 'scan');
+  const co = $('count-overlay');
+  co.classList.remove('prep');
+  const al = $('analysis-line');
+  al.textContent = (poseAvailable && poseEnabled)
+    ? 'SCAN EN COURS — POSTURE VÉRIFIÉE PAR L\'IA, LE MOINDRE ÉCART DÉCLENCHE L\'ALARME !'
+    : 'SCAN EN COURS — LE MOINDRE MOUVEMENT DÉCLENCHE L\'ALARME !';
+  scanTick();
+  countTimer = setInterval(scanTick, 1000);
+}
+
+function scanTick(){
+  if(phase !== 'scanning') return;
+  if(secondsLeft <= 0){ captureSuccess(); return; }
+  const co = $('count-overlay');
+  const urgent = secondsLeft <= 2;
+  co.textContent = secondsLeft;
+  co.classList.toggle('urgent', urgent);
+  co.classList.remove('zoom'); void co.offsetWidth; co.classList.add('zoom');
+  playBeep(urgent);
+  const held = HOLD_SECONDS - secondsLeft;
+  $('hold-fill').style.width = (held / HOLD_SECONDS * 100) + '%';
+  $('hold-val').textContent = held + '/' + HOLD_SECONDS + ' s';
+  secondsLeft--;
+}
+
+function captureSuccess(){
+  clearInterval(countTimer); countTimer = null;
+  phase = 'captured';
+  $('hold-fill').style.width = '100%';
+  $('hold-val').textContent = HOLD_SECONDS + '/' + HOLD_SECONDS + ' s';
+  const co = $('count-overlay');
+  co.textContent = '✓'; co.classList.remove('urgent','zoom','prep'); co.classList.add('hold');
+  $('cam-frame').classList.remove('scanning');
+  setBanner('EMPREINTE CAPTURÉE ✔', '');
+  playSuccess();
+  const p = POSTURES[postureIndex];
+  $('frag-digit').textContent = p.code;
+  const so = $('success-overlay');
+  so.classList.remove('show'); void so.offsetWidth; so.classList.add('show');
+  $('frag-'+postureIndex).textContent = p.code;
+  $('frag-'+postureIndex).classList.add('found');
+  phase = 'transition';
+  setTimeout(()=>{
+    postureIndex++;
+    if(postureIndex >= POSTURES.length){
+      showScreen('victory');
+      setTimeout(()=>{ playVictoryFanfare(); startParticles(); }, 400);
+    } else {
+      document.body.classList.add('glitching');
+      setTimeout(()=>document.body.classList.remove('glitching'), 800);
+      loadPosture();
+    }
+  }, 2600);
+}
+
+function failPosture(reason){
+  if(phase !== 'scanning') return;
+  clearInterval(countTimer); countTimer = null;
+  playBuzzer();
+  $('cam-frame').classList.add('alarm');
+  $('fail-title').textContent = reason === 'pose'
+    ? '⚠ POSTURE NON CONFORME ⚠'
+    : '⚠ MOUVEMENT DÉTECTÉ ⚠';
+  const ov = $('fail-overlay');
+  ov.classList.remove('show'); void ov.offsetWidth; ov.classList.add('show');
+  document.body.classList.remove('shake'); void document.body.offsetWidth;
+  document.body.classList.add('shake');
+  phase = 'transition';
+  setTimeout(()=>{
+    enterPrepPhase();
+    const al = $('analysis-line');
+    al.classList.remove('wait');
+    al.textContent = reason === 'pose'
+      ? '⚠ L\'IA A DÉTECTÉ UNE POSTURE INCORRECTE — REGARDEZ L\'HOLOGRAMME ET RÉESSAYEZ'
+      : reason === 'motion'
+      ? '⚠ LE SCANNER A DÉTECTÉ UN MOUVEMENT — REPRENEZ LA POSTURE'
+      : '⚠ ANOMALIE SIGNALÉE PAR L\'OPÉRATEUR — REPRENEZ LA POSTURE';
+  }, 1500);
+}
+
+// =====================================================
+// PARTICULES
+// =====================================================
+const canvas = $('particles'), pctx = canvas.getContext('2d');
+let parts = [], particlesOn = false;
+function sizeCanvas(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+addEventListener('resize', sizeCanvas); sizeCanvas();
+function burst(x, y){
+  const colors = ['rgb(0,255,100)','#7dffb8','#ffffff','#00ffd5'];
+  for(let i=0;i<70;i++){
+    const a = Math.random()*Math.PI*2, sp = 2+Math.random()*7;
+    parts.push({x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:1, decay:0.008+Math.random()*0.015,
+      size:2+Math.random()*3.5, c:colors[Math.floor(Math.random()*colors.length)]});
+  }
+}
+function startParticles(){
+  if(particlesOn) return;
+  particlesOn = true;
+  for(let i=0;i<5;i++) setTimeout(()=>burst(Math.random()*innerWidth, Math.random()*innerHeight*0.7), i*250);
+  setInterval(()=>{ if(screen==='victory') burst(Math.random()*innerWidth, Math.random()*innerHeight*0.7); }, 900);
+  loopParticles();
+}
+function loopParticles(){
+  pctx.clearRect(0,0,canvas.width,canvas.height);
+  parts = parts.filter(p=>p.life>0);
+  for(const p of parts){
+    p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.vx *= 0.985;
+    p.life -= p.decay;
+    pctx.globalAlpha = Math.max(p.life,0);
+    pctx.fillStyle = p.c;
+    pctx.shadowBlur = 12; pctx.shadowColor = p.c;
+    pctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  pctx.globalAlpha = 1; pctx.shadowBlur = 0;
+  requestAnimationFrame(loopParticles);
+}
+
+// =====================================================
+// CONTRÔLES
+// =====================================================
+$('btn-launch').addEventListener('click', ()=>{ audio(); startProtocol(); });
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'h' || e.key === 'H'){ $('gm-help').classList.toggle('visible'); return; }
+  if(e.key === 'm' || e.key === 'M'){
+    autoDetect = !autoDetect;
+    $('gm-detect').textContent = autoDetect ? 'ON' : 'OFF';
+    return;
+  }
+  if(e.key === 'p' || e.key === 'P'){
+    if(poseAvailable){
+      poseEnabled = !poseEnabled;
+      $('gm-pose').textContent = poseEnabled ? 'ON' : 'OFF';
+      if(!poseEnabled) setPoseStatus('off','VÉRIFICATION IA DÉSACTIVÉE','');
+    }
+    return;
+  }
+
+  if(screen === 'home'){
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); startMission(); }
+    return;
+  }
+  if(screen !== 'game') return;
+
+  if(e.key === ' '){
+    e.preventDefault();
+    startProtocol();
+  } else if(e.key === 'Enter'){
+    if(phase === 'scanning' || phase === 'positioning') captureSuccess();
+  } else if(e.key === 'Backspace' || e.key === 'r' || e.key === 'R'){
+    e.preventDefault();
+    if(phase === 'scanning') failPosture('manual');
+  }
+});
+
+$('gm-sens').addEventListener('input', e=>{
+  threshold = parseInt(e.target.value, 10);
+  $('gm-sens-val').textContent = threshold;
+});
+$('gm-prep').addEventListener('input', e=>{
+  PREP_SECONDS = parseInt(e.target.value, 10);
+  $('gm-prep-val').textContent = PREP_SECONDS;
+});
+$('gm-hold').addEventListener('input', e=>{
+  HOLD_SECONDS = parseInt(e.target.value, 10);
+  $('gm-hold-val').textContent = HOLD_SECONDS;
+  if(phase === 'prep') $('hold-val').textContent = '0/' + HOLD_SECONDS + ' s';
+});
+
+// ---------- DÉMARRAGE ----------
+async function startMission(){
+  if(screen !== 'home') return;
+  audio();
+  const btn = $('btn-scan');
+  btn.disabled = true;
+  $('cam-status').textContent = 'Initialisation du scanner… autorisez la caméra si demandé.';
+  const camOk = await initCamera();
+  if(!camOk){
+    $('cam-frame').classList.add('nocam-mode');
+    setPoseStatus('off','VÉRIFICATION IA INDISPONIBLE (PAS DE CAMÉRA)','');
+    $('gm-pose').textContent = 'INDISPO';
+  } else {
+    initPose(); // en arrière-plan : le jeu démarre sans attendre l'IA
+  }
+  playSuccess();
+  postureIndex = 0;
+  for(let i=0;i<4;i++){ $('frag-'+i).textContent='?'; $('frag-'+i).classList.remove('found'); }
+  showScreen('game');
+  setTimeout(loadPosture, 200);
+}
+$('btn-scan').addEventListener('click', startMission);
+</script>
+</body>
+</html>
