@@ -73,6 +73,10 @@ body{
   color:var(--neon-dim);border-bottom:1px solid var(--neon-faint);background:rgba(0,10,5,.72);}
 #statusbar .blink{animation:blink 1.2s steps(2) infinite;color:var(--red)}
 @keyframes blink{50%{opacity:0}}
+#mission-timer{color:var(--neon);letter-spacing:.12em;font-weight:bold}
+#mission-timer.mt-warn{color:var(--amber);text-shadow:0 0 8px rgba(255,179,64,.6)}
+#mission-timer.mt-crit,#mission-timer.mt-over{color:var(--red);
+  text-shadow:0 0 8px var(--red);animation:blink 1s steps(2) infinite}
 #fragments{display:flex;gap:8px;align-items:center}
 #fragments .flabel{font-size:10px;color:var(--neon-dim);margin-right:4px}
 .frag{width:30px;height:34px;border:1px solid var(--neon-dim);display:flex;
@@ -335,6 +339,8 @@ body.shake{animation:shake .5s}
 #final-code .digit:nth-child(4){animation-delay:1.9s}
 @keyframes digitDrop{to{opacity:1;transform:scale(1) rotate(0)}}
 #victory .outro{color:#8fffbe;font-size:clamp(12px,1.3vw,16px);letter-spacing:.25em;opacity:.85}
+#mission-result{margin-top:1.4vh;color:var(--cyan);font-size:clamp(12px,1.4vw,17px);
+  letter-spacing:.2em;text-shadow:0 0 10px rgba(0,229,255,.6)}
 #victory .team{margin-top:2.2vh;font-size:clamp(14px,1.7vw,21px);color:#fff;text-shadow:0 0 12px var(--neon);}
 
 /* ---------- Glitch ---------- */
@@ -379,6 +385,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
     <div class="frag" id="frag-0">?</div><div class="frag" id="frag-1">?</div>
     <div class="frag" id="frag-2">?</div><div class="frag" id="frag-3">?</div>
   </div>
+  <span id="mission-timer">⏳ --:--</span>
   <span id="clock">--:--:--</span>
 </div>
 
@@ -574,6 +581,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
       <div class="digit">7</div><div class="digit">4</div>
     </div>
     <div class="outro">// PROFESSEUR RAIDEUR NEUTRALISÉ — MISSION ACCOMPLIE //</div>
+    <div id="mission-result"></div>
     <div class="team">🏆 BRAVO AGENTS ! VOS ARTICULATIONS VOUS DISENT MERCI</div>
   </div>
 </section>
@@ -591,6 +599,10 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
     <input type="range" id="gm-prep" min="3" max="25" step="1" value="10"><b id="gm-prep-val">10</b></div>
   <div class="row"><span>Durée du maintien (s)</span>
     <input type="range" id="gm-hold" min="3" max="15" step="1" value="7"><b id="gm-hold-val">7</b></div>
+  <div class="row"><span>Taille min. agent (% image)</span>
+    <input type="range" id="gm-minsz" min="2" max="20" step="1" value="7"><b id="gm-minsz-val">7</b></div>
+  <div class="row"><span>Chrono mission (min)</span>
+    <input type="range" id="gm-mission" min="5" max="60" step="5" value="30"><b id="gm-mission-val">30</b></div>
   <b>H</b> — Masquer ce panneau
 </div>
 
@@ -685,6 +697,8 @@ function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 // ---------- RÉGLAGES (modifiables via panneau H) ----------
 let PREP_SECONDS = 10;   // temps de mise en position
 let HOLD_SECONDS = 7;    // durée du maintien scanné
+let minAgentPct = 7;     // % de la largeur vidéo : silhouette plus étroite = spectateur ignoré
+let MISSION_MINUTES = 30; // chrono global de la mission
 const GRACE_MS = 900;    // tolérance au démarrage du scan
 const FAIL_FRAMES = 3;   // images consécutives de mouvement pour échouer
 const POSE_FAIL_MS = 1300; // durée de non-conformité tolérée pendant le scan
@@ -705,6 +719,7 @@ let poseCounts = {ok:0, total:0};
 let poseBadSince = 0;    // timestamp de début de non-conformité pendant le scan
 let threshold = 9;
 let overFrames = 0;
+let missionStartAt = 0, missionTimer = null, missionOver = false;
 
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
@@ -858,8 +873,9 @@ async function poseLoop(){
     if(poseEnabled && video.readyState >= 2 && screen === 'game'){
       try{
         const poses = await poseDetector.estimatePoses(video, {maxPoses:6});
-        evaluatePoses(poses);
-        drawSkeletons(poses);
+        const results = analysePoses(poses);
+        evaluatePoses(results);
+        drawSkeletons(results);
       }catch(e){ /* frame ratée : on continue */ }
     } else {
       skelCtx.clearRect(0,0,skel.width,skel.height);
@@ -868,19 +884,31 @@ async function poseLoop(){
   }
 }
 
-function evaluatePoses(poses){
+// Analyse chaque silhouette une seule fois : conformité + filtre des spectateurs
+// (une silhouette dont la largeur d'épaules est sous minAgentPct % de l'image
+// est considérée trop loin de la caméra pour être un joueur → ignorée)
+function analysePoses(poses){
   const p = POSTURES[postureIndex];
-  let ok = 0, total = 0;
+  const minSw = (video.videoWidth || 640) * minAgentPct / 100;
+  const results = [];
   for(const pose of poses){
     if(pose.score !== undefined && pose.score < 0.2) continue;
     const k = pose.keypoints;
     const sl = k[5], sr = k[6];
-    if(!vis(sl,sr)) continue;
+    if(!vis(sl,sr)){ results.push({pose, conform:null, ignored:false}); continue; }
     const sw = Math.max(dist(sl,sr), 20); // largeur d'épaules = unité de mesure
-    const res = p.check(k, sw);
-    if(res === null) continue;
+    if(sw < minSw){ results.push({pose, conform:null, ignored:true}); continue; }
+    results.push({pose, conform:p.check(k, sw), ignored:false});
+  }
+  return results;
+}
+
+function evaluatePoses(results){
+  let ok = 0, total = 0;
+  for(const r of results){
+    if(r.ignored || r.conform === null) continue;
     total++;
-    if(res) ok++;
+    if(r.conform) ok++;
   }
   poseCounts = {ok, total};
   poseConform = total === 0 ? null : (ok === total);
@@ -915,7 +943,7 @@ function setPoseStatus(cls, label, count){
 
 // Squelettes néon superposés à la vidéo (effet miroir)
 const BONES = [[5,7],[7,9],[6,8],[8,10],[5,6],[5,11],[6,12],[11,12],[11,13],[13,15],[12,14],[14,16],[0,5],[0,6]];
-function drawSkeletons(poses){
+function drawSkeletons(results){
   const vw = video.videoWidth || 640, vh = video.videoHeight || 360;
   if(skel.width !== skel.clientWidth) skel.width = skel.clientWidth;
   if(skel.height !== skel.clientHeight) skel.height = skel.clientHeight;
@@ -925,16 +953,11 @@ function drawSkeletons(poses){
   const ox = (W - vw*scale)/2, oy = (H - vh*scale)/2;
   const map = p => ({ x: W - (p.x*scale + ox), y: p.y*scale + oy });
   skelCtx.clearRect(0,0,W,H);
-  for(const pose of poses){
+  for(const {pose, conform, ignored} of results){
     const k = pose.keypoints;
-    const sl=k[5], sr=k[6];
-    let conformThis = null;
-    if(vis(sl,sr)){
-      const sw = Math.max(dist(sl,sr),20);
-      conformThis = POSTURES[postureIndex].check(k, sw);
-    }
-    const col = conformThis === true ? 'rgba(0,255,100,.95)'
-              : conformThis === false ? 'rgba(255,179,64,.95)'
+    const col = ignored ? 'rgba(150,180,165,.3)'
+              : conform === true ? 'rgba(0,255,100,.95)'
+              : conform === false ? 'rgba(255,179,64,.95)'
               : 'rgba(0,229,255,.8)';
     skelCtx.strokeStyle = col; skelCtx.fillStyle = col;
     skelCtx.lineWidth = 3; skelCtx.shadowBlur = 10; skelCtx.shadowColor = col;
@@ -1154,6 +1177,7 @@ function captureSuccess(){
   setTimeout(()=>{
     postureIndex++;
     if(postureIndex >= POSTURES.length){
+      stopMissionClock();
       showScreen('victory');
       setTimeout(()=>{ playVictoryFanfare(); startParticles(); }, 400);
     } else {
@@ -1228,6 +1252,41 @@ function loopParticles(){
 }
 
 // =====================================================
+// CHRONO DE MISSION
+// =====================================================
+function fmtTime(s){
+  s = Math.max(0, Math.floor(s));
+  return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+}
+function startMissionClock(){
+  missionStartAt = performance.now();
+  missionOver = false;
+  clearInterval(missionTimer);
+  missionTimer = setInterval(updateMissionClock, 250);
+  updateMissionClock();
+}
+function updateMissionClock(){
+  const el = $('mission-timer');
+  const left = MISSION_MINUTES*60 - (performance.now() - missionStartAt)/1000;
+  if(left <= 0){
+    el.textContent = '⏳ 00:00';
+    el.className = 'mt-over';
+    if(!missionOver){ missionOver = true; playBuzzer(); } // le maître du jeu décide de la suite
+    return;
+  }
+  missionOver = false; // le GM peut rallonger le chrono en cours de partie
+  el.textContent = '⏳ ' + fmtTime(left);
+  el.className = left <= 60 ? 'mt-crit' : left <= 300 ? 'mt-warn' : '';
+}
+function stopMissionClock(){
+  clearInterval(missionTimer); missionTimer = null;
+  if(!missionStartAt) return;
+  const elapsed = (performance.now() - missionStartAt)/1000;
+  $('mission-result').textContent = '⏱ MISSION BOUCLÉE EN ' + fmtTime(elapsed)
+    + (elapsed > MISSION_MINUTES*60 ? ' — TEMPS RÉGLEMENTAIRE DÉPASSÉ !' : '');
+}
+
+// =====================================================
 // CONTRÔLES
 // =====================================================
 $('btn-launch').addEventListener('click', ()=>{ audio(); startProtocol(); });
@@ -1278,6 +1337,15 @@ $('gm-hold').addEventListener('input', e=>{
   $('gm-hold-val').textContent = HOLD_SECONDS;
   if(phase === 'prep') $('hold-val').textContent = '0/' + HOLD_SECONDS + ' s';
 });
+$('gm-minsz').addEventListener('input', e=>{
+  minAgentPct = parseInt(e.target.value, 10);
+  $('gm-minsz-val').textContent = minAgentPct;
+});
+$('gm-mission').addEventListener('input', e=>{
+  MISSION_MINUTES = parseInt(e.target.value, 10);
+  $('gm-mission-val').textContent = MISSION_MINUTES;
+  if(missionTimer) updateMissionClock();
+});
 
 // ---------- DÉMARRAGE ----------
 async function startMission(){
@@ -1297,10 +1365,18 @@ async function startMission(){
   playSuccess();
   postureIndex = 0;
   for(let i=0;i<4;i++){ $('frag-'+i).textContent='?'; $('frag-'+i).classList.remove('found'); }
+  startMissionClock();
   showScreen('game');
   setTimeout(loadPosture, 200);
 }
 $('btn-scan').addEventListener('click', startMission);
+
+// ---------- MODE HORS-LIGNE ----------
+// Le service worker met en cache la page, les librairies IA et le modèle
+// MoveNet : après une première visite en ligne, le jeu marche sans internet.
+if('serviceWorker' in navigator){
+  addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+}
 </script>
 </body>
 </html>
