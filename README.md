@@ -9,10 +9,18 @@ en réalisant 4 postures d'étirement devant un scanner biométrique.
 - **Vérification des postures par IA** (TensorFlow.js MoveNet MultiPose, jusqu'à 6 personnes)
   avec squelettes néon affichés en direct sur la vidéo
 - **Détection de mouvement** par analyse d'images (le moindre geste pendant le scan = alarme)
-- 4 postures : Le Grand Sphinx, Le Cactus au Soleil, L'Oiseau Impérial, L'Archer Agile
+- 7 postures couvrant tout le corps :
+  - **Le Grand Sphinx** (poignets & avant-bras), **Le Cactus au Soleil**
+    (poitrine & épaules), **L'Oiseau Impérial** (nuque & cervicales),
+    **L'Archer Agile** (haut du dos & omoplates)
+  - **La Montagne Penchée** (flancs & lombaires), **Le Flamant Rose**
+    (hanches & quadriceps), **La Chaise Invisible** (cuisses & lombaires)
+  - La liste est modifiable dans le tableau `POSTURES` de `index.html` :
+    retirer ou ajouter une posture adapte automatiquement fragments, tracker
+    et code final
 - Hologrammes SVG animés de démonstration + consignes pas-à-pas
 - Sons 100 % Web Audio API (bips sonar, buzzer, mélodies) — aucun fichier externe
-- Fragments de code révélés à chaque réussite → code final **8 2 7 4**
+- Fragments de code révélés à chaque réussite → code final **8 2 7 4 5 1 9**
 - **Notation & classement des agents** : chaque silhouette suivie devient un
   « AGENT n » (étiquette affichée au-dessus de son squelette) ; pendant chaque
   scan, l'IA note sa précision (% du temps en posture conforme), le meilleur
