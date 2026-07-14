@@ -54,6 +54,9 @@ body{
 .screen{position:fixed;inset:0;z-index:2;display:none;flex-direction:column;
   align-items:center;justify-content:center;padding:6vh 3vw 3vh;text-align:center;overflow-y:auto;}
 .screen.active{display:flex}
+/* L'écran de jeu est plus haut que les autres : ancré en haut pour ne pas
+   passer sous la barre de statut */
+#game{justify-content:flex-start;padding-top:56px}
 
 /* ---------- Boîtes high-tech ---------- */
 .tech-box{position:relative;border:1px solid var(--neon-dim);background:var(--panel);
@@ -194,6 +197,12 @@ h1.title{font-size:clamp(20px,3.2vw,38px);letter-spacing:.22em;margin-bottom:1vh
 @keyframes jDraw{0%,20%{transform:rotate(0)}55%,75%{transform:rotate(-28deg)}100%{transform:rotate(0)}}
 .j-string{animation:stringT 2.4s ease-in-out infinite;transform-origin:40px 84px}
 @keyframes stringT{0%,20%{transform:scaleX(1)}55%,75%{transform:scaleX(1.06)}100%{transform:scaleX(1)}}
+.j-sway{transform-origin:100px 145px;animation:jSway 3.2s ease-in-out infinite}
+@keyframes jSway{0%,100%{transform:rotate(0)}50%{transform:rotate(5deg)}}
+.j-heel{transform-origin:100px 145px;animation:jHeel 2.8s ease-in-out infinite}
+@keyframes jHeel{0%,20%{transform:rotate(0)}55%,75%{transform:rotate(-5deg)}100%{transform:rotate(0)}}
+.j-sit{animation:jSit 3s ease-in-out infinite}
+@keyframes jSit{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
 
 #zone-tag{margin-top:4px;font-size:11px;letter-spacing:.22em;color:var(--amber);
   border:1px solid rgba(255,179,64,.5);padding:4px 12px;
@@ -328,17 +337,13 @@ body.shake{animation:shake .5s}
 #particles{position:fixed;inset:0;z-index:1;pointer-events:none}
 #victory h2{font-size:clamp(22px,3.4vw,46px);letter-spacing:.18em;margin-bottom:3vh;
   text-shadow:0 0 16px var(--neon),0 0 60px rgba(0,255,100,.6);}
-#final-code{display:flex;gap:2.5vw;margin-bottom:3vh;justify-content:center}
-#final-code .digit{font-size:clamp(58px,11vw,130px);font-weight:bold;padding:1.4vh 2.4vw;
+#final-code{display:flex;gap:1.4vw;margin-bottom:3vh;justify-content:center;flex-wrap:wrap}
+#final-code .digit{font-size:clamp(34px,7vw,84px);font-weight:bold;padding:1.2vh 1.6vw;
   border:2px solid var(--neon);background:rgba(0,255,100,.07);
   box-shadow:0 0 30px rgba(0,255,100,.5),inset 0 0 30px rgba(0,255,100,.15);
   text-shadow:0 0 25px var(--neon),0 0 90px var(--neon);
   opacity:0;transform:scale(3) rotate(8deg);
   animation:digitDrop .6s cubic-bezier(.2,1.6,.4,1) forwards;}
-#final-code .digit:nth-child(1){animation-delay:.4s}
-#final-code .digit:nth-child(2){animation-delay:.9s}
-#final-code .digit:nth-child(3){animation-delay:1.4s}
-#final-code .digit:nth-child(4){animation-delay:1.9s}
 @keyframes digitDrop{to{opacity:1;transform:scale(1) rotate(0)}}
 #leaderboard{margin:0 auto 2.6vh;max-width:600px;width:100%}
 #leaderboard .lb-title{font-size:12px;letter-spacing:.3em;color:var(--neon-dim);margin-bottom:10px}
@@ -395,8 +400,6 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
   <span class="blink">⚠ INTRUSION — PROF. RAIDEUR</span>
   <div id="fragments">
     <span class="flabel">CODE :</span>
-    <div class="frag" id="frag-0">?</div><div class="frag" id="frag-1">?</div>
-    <div class="frag" id="frag-2">?</div><div class="frag" id="frag-3">?</div>
   </div>
   <span id="mission-timer">⏳ --:--</span>
   <span id="clock">--:--:--</span>
@@ -442,7 +445,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
       </div>
       <div class="howto-card">
         <div class="ic">🔓</div><div class="n">ÉTAPE 3</div>
-        <p>Chaque posture réussie révèle un fragment du code. 4 fragments = Professeur Raideur neutralisé.</p>
+        <p>Chaque posture réussie révèle un fragment du code. 7 fragments = Professeur Raideur neutralisé.</p>
       </div>
     </div>
 
@@ -454,9 +457,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
 <!-- ================= ÉCRAN 2 : POSTURES ================= -->
 <section id="game" class="screen">
   <div class="step-tracker">
-    <span class="step-label" id="step-label">POSTURE 1/4</span>
-    <div class="step-dot" id="tracker-0"></div><div class="step-dot" id="tracker-1"></div>
-    <div class="step-dot" id="tracker-2"></div><div class="step-dot" id="tracker-3"></div>
+    <span class="step-label" id="step-label">POSTURE 1/7</span>
   </div>
   <div class="tech-box"><span class="corner"></span>
     <h2 id="posture-name" class="glitch" data-text=""></h2>
@@ -543,6 +544,54 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
             <polygon class="arrowhead" points="190,99 178,96 186,86"/>
           </svg>
 
+          <svg class="holo-svg" id="holo-4" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <path class="limb" d="M100 145 L84 225 M100 145 L116 225"/>
+            <g class="j-sway">
+              <circle class="head" cx="126" cy="54" r="17"/>
+              <path class="limb" d="M100 145 C104 118 112 96 120 70"/>
+              <path class="limb" d="M118 80 C134 62 146 44 154 26"/>
+              <path class="limb" d="M112 86 C130 68 142 48 154 26"/>
+              <circle class="hand" cx="154" cy="26" r="7"/>
+            </g>
+            <ellipse class="zone" cx="92" cy="112" rx="15" ry="24"/>
+            <path class="arrow" d="M158 62 Q176 84 178 108"/>
+            <polygon class="arrowhead" points="178,110 170,100 182,98"/>
+          </svg>
+
+          <svg class="holo-svg" id="holo-5" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <circle class="head" cx="100" cy="46" r="17"/>
+            <path class="limb" d="M100 63 L100 145"/>
+            <path class="limb" d="M100 145 L98 225"/>
+            <g class="j-heel">
+              <path class="limb" d="M100 145 L124 185 L124 150"/>
+              <circle class="hand" cx="124" cy="148" r="7"/>
+            </g>
+            <path class="limb" d="M100 84 L128 120 L124 148"/>
+            <path class="limb" d="M100 84 L72 60"/>
+            <circle class="hand" cx="70" cy="58" r="6"/>
+            <ellipse class="zone" cx="116" cy="168" rx="18" ry="22"/>
+            <path class="arrow" d="M152 192 Q162 166 152 142"/>
+            <polygon class="arrowhead" points="151,140 149,152 161,148"/>
+          </svg>
+
+          <svg class="holo-svg" id="holo-6" viewBox="0 0 230 250" xmlns="http://www.w3.org/2000/svg">
+            <g class="prop"><path d="M62 150 L62 214 M62 150 L42 150 M62 214 L90 214" stroke-dasharray="5 6"/></g>
+            <g class="j-sit">
+              <circle class="head" cx="88" cy="66" r="17"/>
+              <path class="limb" d="M88 83 L96 148"/>
+              <path class="limb" d="M88 96 L134 96"/>
+              <path class="limb" d="M88 100 L134 104"/>
+              <circle class="hand" cx="136" cy="96" r="6"/>
+              <circle class="hand" cx="136" cy="104" r="6"/>
+              <path class="limb" d="M96 148 L138 152"/>
+            </g>
+            <path class="limb" d="M138 152 L138 225"/>
+            <path class="limb" d="M124 155 L124 225"/>
+            <ellipse class="zone" cx="118" cy="152" rx="26" ry="14"/>
+            <path class="arrow" d="M172 118 Q186 140 182 164"/>
+            <polygon class="arrowhead" points="182,166 174,156 188,154"/>
+          </svg>
+
         </div>
         <div id="zone-tag">ZONE CIBLE : —</div>
         <div id="instructions"></div>
@@ -590,10 +639,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
 <section id="victory" class="screen">
   <div class="tech-box"><span class="corner"></span>
     <h2 class="glitch" data-text="SYSTÈME DÉVERROUILLÉ — ARTICULATIONS LIBÉRÉES">SYSTÈME DÉVERROUILLÉ — ARTICULATIONS LIBÉRÉES</h2>
-    <div id="final-code">
-      <div class="digit">8</div><div class="digit">2</div>
-      <div class="digit">7</div><div class="digit">4</div>
-    </div>
+    <div id="final-code"></div>
     <div id="leaderboard"></div>
     <div class="outro">// PROFESSEUR RAIDEUR NEUTRALISÉ — MISSION ACCOMPLIE //</div>
     <div id="mission-result"></div>
@@ -635,7 +681,8 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
 
 // ---------- DONNÉES ----------
 // checkPose reçoit les keypoints MoveNet (0:nez 1:œilG 2:œilD 3:oreilleG 4:oreilleD
-// 5:épauleG 6:épauleD 7:coudeG 8:coudeD 9:poignetG 10:poignetD 11:hancheG 12:hancheD)
+// 5:épauleG 6:épauleD 7:coudeG 8:coudeD 9:poignetG 10:poignetD 11:hancheG 12:hancheD
+// 13:genouG 14:genouD 15:chevilleG 16:chevilleD)
 const POSTURES = [
   { name:"LE GRAND SPHINX",
     sub:"Étirement des poignets — pour tapoteurs de claviers compulsifs",
@@ -704,6 +751,50 @@ const POSTURES = [
       const extended = w => Math.abs(w.x - midX) > sw*1.15 && Math.abs(w.y - shoulderY) < sw*0.6;
       const atChest  = w => Math.abs(w.x - midX) < sw*0.75 && Math.abs(w.y - shoulderY) < sw*0.85;
       return (extended(wl) && atChest(wr)) || (extended(wr) && atChest(wl));
+    }},
+  { name:"LA MONTAGNE PENCHÉE",
+    sub:"Étirement des flancs & lombaires — antidote à la position assise prolongée",
+    zone:"FLANCS & LOMBAIRES", code:"5",
+    steps:[
+      "Debout, mains jointes, bras tendus au-dessus de la tête 🏔️",
+      "Penchez tout le buste sur le côté, comme un palmier dans le vent",
+      "Gardez les bras bien tendus, respirez… et immobiles !"
+    ],
+    check:(k,sw)=>{ // mains au-dessus de la tête + tronc nettement incliné
+      const wl=k[9], wr=k[10], sl=k[5], sr=k[6], hl=k[11], hr=k[12], nose=k[0];
+      if(!vis(wl,wr,sl,sr,hl,hr,nose)) return null;
+      const handsUp = wl.y < nose.y && wr.y < nose.y;
+      const msx=(sl.x+sr.x)/2, msy=(sl.y+sr.y)/2;
+      const mhx=(hl.x+hr.x)/2, mhy=(hl.y+hr.y)/2;
+      const lean = Math.atan2(Math.abs(msx-mhx), Math.max(Math.abs(mhy-msy),1)) * 180/Math.PI;
+      return handsUp && lean > 12; // buste penché d'au moins ~12°
+    }},
+  { name:"LE FLAMANT ROSE",
+    sub:"Réveil des hanches & quadriceps — spécial jambes en mode veille",
+    zone:"HANCHES & QUADRICEPS", code:"1",
+    steps:[
+      "Debout sur une jambe, attrapez votre cheville derrière vous 🦩",
+      "Tirez doucement le talon vers la fesse, genoux serrés",
+      "Fixez un point devant vous pour l'équilibre… et on ne vacille plus !"
+    ],
+    check:(k,sw)=>{ // une cheville nettement plus haute que l'autre (talon-fesse)
+      const al=k[15], ar=k[16], kl=k[13], kr=k[14];
+      if(!vis(al,ar,kl,kr)) return null;
+      return Math.abs(al.y - ar.y) > sw*0.7;
+    }},
+  { name:"LA CHAISE INVISIBLE",
+    sub:"Renforcement jambes & dos — pour se lever sans grogner",
+    zone:"CUISSES & LOMBAIRES", code:"9",
+    steps:[
+      "Pieds écartés largeur d'épaules, dos droit contre un mur imaginaire 🪑",
+      "Pliez les genoux comme pour vous asseoir sur une chaise invisible",
+      "Les cuisses chauffent ? C'est que ça marche… tenez bon sans bouger !"
+    ],
+    check:(k,sw)=>{ // hanches abaissées : écart vertical hanches-genoux réduit
+      const hl=k[11], hr=k[12], kl=k[13], kr=k[14];
+      if(!vis(hl,hr,kl,kr)) return null;
+      const hipY=(hl.y+hr.y)/2, kneeY=(kl.y+kr.y)/2;
+      return (kneeY - hipY) < sw*0.55 && kneeY > hipY - sw*0.1;
     }}
 ];
 function vis(...kps){ return kps.every(p => p && p.score > 0.3); }
@@ -759,6 +850,16 @@ const skelCtx = skel.getContext('2d');
 let prevFrame = null;
 
 setInterval(()=>{ $('clock').textContent = new Date().toLocaleTimeString('fr-FR'); },500);
+
+// Fragments de code + tracker générés selon le nombre de postures
+POSTURES.forEach((p,i)=>{
+  const f = document.createElement('div');
+  f.className = 'frag'; f.id = 'frag-'+i; f.textContent = '?';
+  $('fragments').appendChild(f);
+  const d = document.createElement('div');
+  d.className = 'step-dot'; d.id = 'tracker-'+i;
+  document.querySelector('.step-tracker').appendChild(d);
+});
 
 // =====================================================
 // AUDIO
@@ -1106,12 +1207,12 @@ function loadPosture(){
   nameEl.textContent = p.name;
   nameEl.dataset.text = p.name;
   $('posture-sub').textContent = p.sub;
-  $('step-label').textContent = 'POSTURE ' + (postureIndex+1) + '/4';
+  $('step-label').textContent = 'POSTURE ' + (postureIndex+1) + '/' + POSTURES.length;
   $('zone-tag').textContent = 'ZONE CIBLE : ' + p.zone;
-  for(let i=0;i<4;i++) $('holo-'+i).classList.toggle('active', i===postureIndex);
+  for(let i=0;i<POSTURES.length;i++) $('holo-'+i).classList.toggle('active', i===postureIndex);
   $('instructions').innerHTML = p.steps.map((s,i)=>
     '<div class="instr"><span class="num">'+(i+1)+'</span><span>'+s+'</span></div>').join('');
-  for(let i=0;i<4;i++){
+  for(let i=0;i<POSTURES.length;i++){
     const d = $('tracker-'+i);
     d.classList.toggle('done', i < postureIndex);
     d.classList.toggle('current', i === postureIndex);
@@ -1239,6 +1340,7 @@ function captureSuccess(){
     if(postureIndex >= POSTURES.length){
       stopMissionClock();
       buildLeaderboard();
+      buildFinalCode();
       showScreen('victory');
       setTimeout(()=>{ playVictoryFanfare(); startParticles(); }, 400);
     } else {
@@ -1345,6 +1447,17 @@ function updateMissionClock(){
 // Score global = somme des scores de posture / nombre de postures :
 // être présent et précis sur les 4 postures rapporte le maximum.
 // =====================================================
+function buildFinalCode(){
+  const fc = $('final-code');
+  fc.innerHTML = '';
+  POSTURES.forEach((p,i)=>{
+    const d = document.createElement('div');
+    d.className = 'digit'; d.textContent = p.code;
+    d.style.animationDelay = (0.4 + i*0.45) + 's';
+    fc.appendChild(d);
+  });
+}
+
 function buildLeaderboard(){
   const lb = $('leaderboard');
   const list = Object.values(agents).filter(a => a.scoreCount > 0);
@@ -1449,7 +1562,7 @@ async function startMission(){
   }
   playSuccess();
   postureIndex = 0;
-  for(let i=0;i<4;i++){ $('frag-'+i).textContent='?'; $('frag-'+i).classList.remove('found'); }
+  for(let i=0;i<POSTURES.length;i++){ $('frag-'+i).textContent='?'; $('frag-'+i).classList.remove('found'); }
   agents = {}; nextAgentNum = 1; scanSamples = null;
   startMissionClock();
   showScreen('game');
