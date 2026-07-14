@@ -13,6 +13,11 @@ en réalisant 4 postures d'étirement devant un scanner biométrique.
 - Hologrammes SVG animés de démonstration + consignes pas-à-pas
 - Sons 100 % Web Audio API (bips sonar, buzzer, mélodies) — aucun fichier externe
 - Fragments de code révélés à chaque réussite → code final **8 2 7 4**
+- **Notation & classement des agents** : chaque silhouette suivie devient un
+  « AGENT n » (étiquette affichée au-dessus de son squelette) ; pendant chaque
+  scan, l'IA note sa précision (% du temps en posture conforme), le meilleur
+  agent est annoncé à chaque posture validée, et l'écran de victoire affiche le
+  classement final 🥇🥈🥉 avec le gagnant à récompenser
 - **Chrono de mission** configurable (5–60 min) : compte à rebours dans la barre
   de statut (orange < 5 min, rouge clignotant < 1 min, buzzer à 00:00 — le maître
   du jeu décide de la suite), temps final affiché sur l'écran de victoire

@@ -321,6 +321,8 @@ body.shake{animation:shake .5s}
   border:2px solid var(--neon);padding:6px 26px;margin-left:14px;color:var(--neon);
   background:rgba(0,255,100,.08);box-shadow:0 0 30px rgba(0,255,100,.6);
   text-shadow:0 0 20px var(--neon);}
+#frag-best{min-height:1.4em;font-size:clamp(13px,1.6vw,20px);color:var(--amber);
+  letter-spacing:.18em;text-shadow:0 0 12px rgba(255,179,64,.8);}
 
 /* ---------- ÉCRAN 3 : VICTOIRE ---------- */
 #particles{position:fixed;inset:0;z-index:1;pointer-events:none}
@@ -338,6 +340,17 @@ body.shake{animation:shake .5s}
 #final-code .digit:nth-child(3){animation-delay:1.4s}
 #final-code .digit:nth-child(4){animation-delay:1.9s}
 @keyframes digitDrop{to{opacity:1;transform:scale(1) rotate(0)}}
+#leaderboard{margin:0 auto 2.6vh;max-width:600px;width:100%}
+#leaderboard .lb-title{font-size:12px;letter-spacing:.3em;color:var(--neon-dim);margin-bottom:10px}
+.lb-row{display:flex;align-items:center;gap:14px;padding:8px 14px;margin-bottom:6px;
+  border:1px solid var(--neon-faint);background:rgba(0,255,100,.03);
+  font-size:clamp(12px,1.4vw,16px);}
+.lb-row.top{border-color:var(--neon);box-shadow:0 0 18px rgba(0,255,100,.35);
+  color:#fff;text-shadow:0 0 8px var(--neon);background:rgba(0,255,100,.08);}
+.lb-row .lb-name{flex:none;min-width:120px;text-align:left;white-space:nowrap}
+.lb-bar{flex:1;height:9px;border:1px solid var(--neon-dim);background:rgba(0,255,100,.05);position:relative}
+.lb-bar>span{position:absolute;left:0;top:0;bottom:0;background:var(--neon);box-shadow:0 0 8px var(--neon)}
+.lb-row .lb-score{flex:none;min-width:150px;text-align:right;color:var(--neon);white-space:nowrap}
 #victory .outro{color:#8fffbe;font-size:clamp(12px,1.3vw,16px);letter-spacing:.25em;opacity:.85}
 #mission-result{margin-top:1.4vh;color:var(--cyan);font-size:clamp(12px,1.4vw,17px);
   letter-spacing:.2em;text-shadow:0 0 10px rgba(0,229,255,.6)}
@@ -396,6 +409,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
 <div id="success-overlay">
   <div class="ok-text">✔ POSTURE VALIDÉE</div>
   <div class="frag-reveal">FRAGMENT DE CODE RÉCUPÉRÉ <span class="frag-digit" id="frag-digit">8</span></div>
+  <div id="frag-best"></div>
 </div>
 
 <!-- ================= ÉCRAN 1 : ACCUEIL ================= -->
@@ -580,6 +594,7 @@ body.transition-glitch #grid-bg{animation:gridJolt .35s steps(4) 2}
       <div class="digit">8</div><div class="digit">2</div>
       <div class="digit">7</div><div class="digit">4</div>
     </div>
+    <div id="leaderboard"></div>
     <div class="outro">// PROFESSEUR RAIDEUR NEUTRALISÉ — MISSION ACCOMPLIE //</div>
     <div id="mission-result"></div>
     <div class="team">🏆 BRAVO AGENTS ! VOS ARTICULATIONS VOUS DISENT MERCI</div>
@@ -720,6 +735,18 @@ let poseBadSince = 0;    // timestamp de début de non-conformité pendant le sc
 let threshold = 9;
 let overFrames = 0;
 let missionStartAt = 0, missionTimer = null, missionOver = false;
+
+// ---------- NOTATION DES AGENTS ----------
+// Chaque silhouette suivie par l'IA (id du tracker MoveNet) devient un AGENT n.
+// Pendant un scan, on échantillonne sa conformité ; score de la posture =
+// % du temps passé en posture conforme. Classement final sur l'écran victoire.
+let agents = {};          // id tracker → { label, scoreSum, scoreCount }
+let nextAgentNum = 1;
+let scanSamples = null;   // pendant un scan : id → { ok, total }
+function getAgent(id){
+  if(!agents[id]) agents[id] = { label:'AGENT '+(nextAgentNum++), scoreSum:0, scoreCount:0 };
+  return agents[id];
+}
 
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
@@ -893,12 +920,13 @@ function analysePoses(poses){
   const results = [];
   for(const pose of poses){
     if(pose.score !== undefined && pose.score < 0.2) continue;
+    const id = pose.id !== undefined ? pose.id : 'p'+results.length;
     const k = pose.keypoints;
     const sl = k[5], sr = k[6];
-    if(!vis(sl,sr)){ results.push({pose, conform:null, ignored:false}); continue; }
+    if(!vis(sl,sr)){ results.push({pose, id, conform:null, ignored:false}); continue; }
     const sw = Math.max(dist(sl,sr), 20); // largeur d'épaules = unité de mesure
-    if(sw < minSw){ results.push({pose, conform:null, ignored:true}); continue; }
-    results.push({pose, conform:p.check(k, sw), ignored:false});
+    if(sw < minSw){ results.push({pose, id, conform:null, ignored:true}); continue; }
+    results.push({pose, id, conform:p.check(k, sw), ignored:false});
   }
   return results;
 }
@@ -909,6 +937,11 @@ function evaluatePoses(results){
     if(r.ignored || r.conform === null) continue;
     total++;
     if(r.conform) ok++;
+    if(phase === 'scanning' && scanSamples){
+      const s = scanSamples[r.id] || (scanSamples[r.id] = {ok:0, total:0});
+      s.total++;
+      if(r.conform) s.ok++;
+    }
   }
   poseCounts = {ok, total};
   poseConform = total === 0 ? null : (ok === total);
@@ -953,7 +986,7 @@ function drawSkeletons(results){
   const ox = (W - vw*scale)/2, oy = (H - vh*scale)/2;
   const map = p => ({ x: W - (p.x*scale + ox), y: p.y*scale + oy });
   skelCtx.clearRect(0,0,W,H);
-  for(const {pose, conform, ignored} of results){
+  for(const {pose, id, conform, ignored} of results){
     const k = pose.keypoints;
     const col = ignored ? 'rgba(150,180,165,.3)'
               : conform === true ? 'rgba(0,255,100,.95)'
@@ -970,6 +1003,17 @@ function drawSkeletons(results){
       if(!kp || kp.score < 0.3) continue;
       const pt = map(kp);
       skelCtx.beginPath(); skelCtx.arc(pt.x,pt.y,4,0,Math.PI*2); skelCtx.fill();
+    }
+    // Étiquette "AGENT n" au-dessus de la tête (pas pour les spectateurs ignorés)
+    if(!ignored){
+      let top = null;
+      for(const kp of k){ if(kp && kp.score > 0.3 && (!top || kp.y < top.y)) top = kp; }
+      if(top){
+        const pt = map(top);
+        skelCtx.font = 'bold 13px Consolas,monospace';
+        skelCtx.textAlign = 'center';
+        skelCtx.fillText(getAgent(id).label, pt.x, Math.max(14, pt.y - 16));
+      }
     }
   }
   skelCtx.shadowBlur = 0;
@@ -1129,6 +1173,7 @@ function beginScan(){
   scanStartAt = performance.now();
   secondsLeft = HOLD_SECONDS;
   overFrames = 0; poseBadSince = 0; smoothScore = 0;
+  scanSamples = {}; // ouverture de la fenêtre de notation des agents
   $('cam-frame').classList.remove('positioning');
   $('cam-frame').classList.add('scanning');
   setBanner('SCAN EN COURS — NE BOUGEZ PLUS', 'scan');
@@ -1167,6 +1212,21 @@ function captureSuccess(){
   $('cam-frame').classList.remove('scanning');
   setBanner('EMPREINTE CAPTURÉE ✔', '');
   playSuccess();
+  // Notation des agents : score de la posture = % d'échantillons conformes
+  let bestLine = '';
+  if(scanSamples){
+    let best = null;
+    for(const [id, s] of Object.entries(scanSamples)){
+      if(s.total < 3) continue; // trop peu d'échantillons pour juger
+      const pct = s.ok / s.total;
+      const a = getAgent(id);
+      a.scoreSum += pct; a.scoreCount++;
+      if(!best || pct > best.pct) best = { label:a.label, pct };
+    }
+    if(best) bestLine = '★ AGENT LE PLUS PRÉCIS : ' + best.label + ' — ' + Math.round(best.pct*100) + ' %';
+    scanSamples = null;
+  }
+  $('frag-best').textContent = bestLine;
   const p = POSTURES[postureIndex];
   $('frag-digit').textContent = p.code;
   const so = $('success-overlay');
@@ -1178,6 +1238,7 @@ function captureSuccess(){
     postureIndex++;
     if(postureIndex >= POSTURES.length){
       stopMissionClock();
+      buildLeaderboard();
       showScreen('victory');
       setTimeout(()=>{ playVictoryFanfare(); startParticles(); }, 400);
     } else {
@@ -1191,6 +1252,7 @@ function captureSuccess(){
 function failPosture(reason){
   if(phase !== 'scanning') return;
   clearInterval(countTimer); countTimer = null;
+  scanSamples = null; // tentative ratée : pas de notation
   playBuzzer();
   $('cam-frame').classList.add('alarm');
   $('fail-title').textContent = reason === 'pose'
@@ -1278,6 +1340,29 @@ function updateMissionClock(){
   el.textContent = '⏳ ' + fmtTime(left);
   el.className = left <= 60 ? 'mt-crit' : left <= 300 ? 'mt-warn' : '';
 }
+// =====================================================
+// CLASSEMENT FINAL DES AGENTS
+// Score global = somme des scores de posture / nombre de postures :
+// être présent et précis sur les 4 postures rapporte le maximum.
+// =====================================================
+function buildLeaderboard(){
+  const lb = $('leaderboard');
+  const list = Object.values(agents).filter(a => a.scoreCount > 0);
+  if(!list.length){ lb.style.display = 'none'; return; } // IA indispo ou validations forcées
+  lb.style.display = '';
+  list.sort((a,b) => b.scoreSum - a.scoreSum);
+  const medals = ['🥇','🥈','🥉'];
+  lb.innerHTML = '<div class="lb-title">— CLASSEMENT BIOMÉTRIQUE DES AGENTS —</div>' +
+    list.map((a,i)=>{
+      const pct = Math.round(a.scoreSum / POSTURES.length * 100);
+      return '<div class="lb-row'+(i===0?' top':'')+'">'
+        + '<span class="lb-name">'+(medals[i] || (i+1)+'.')+' '+a.label+'</span>'
+        + '<span class="lb-bar"><span style="width:'+pct+'%"></span></span>'
+        + '<span class="lb-score">'+pct+' %'+(i===0?' — 🏆 RÉCOMPENSE':'')+'</span>'
+        + '</div>';
+    }).join('');
+}
+
 function stopMissionClock(){
   clearInterval(missionTimer); missionTimer = null;
   if(!missionStartAt) return;
@@ -1365,6 +1450,7 @@ async function startMission(){
   playSuccess();
   postureIndex = 0;
   for(let i=0;i<4;i++){ $('frag-'+i).textContent='?'; $('frag-'+i).classList.remove('found'); }
+  agents = {}; nextAgentNum = 1; scanSamples = null;
   startMissionClock();
   showScreen('game');
   setTimeout(loadPosture, 200);
