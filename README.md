@@ -13,6 +13,15 @@ en réalisant 4 postures d'étirement devant un scanner biométrique.
 - Hologrammes SVG animés de démonstration + consignes pas-à-pas
 - Sons 100 % Web Audio API (bips sonar, buzzer, mélodies) — aucun fichier externe
 - Fragments de code révélés à chaque réussite → code final **8 2 7 4**
+- **Chrono de mission** configurable (5–60 min) : compte à rebours dans la barre
+  de statut (orange < 5 min, rouge clignotant < 1 min, buzzer à 00:00 — le maître
+  du jeu décide de la suite), temps final affiché sur l'écran de victoire
+- **Filtre des spectateurs** : les silhouettes trop petites (personnes loin de la
+  caméra / en arrière-plan) sont ignorées par la vérification IA et affichées en
+  gris estompé — seuil réglable dans le panneau maître du jeu
+- **Mode hors-ligne** : un service worker met en cache la page, les librairies IA
+  et le modèle MoveNet — après une première visite en ligne, le jeu fonctionne
+  sans internet
 - Mode manuel clavier automatique si la caméra est indisponible
 
 ## 🎮 Contrôles Maître du Jeu
@@ -26,12 +35,15 @@ en réalisant 4 postures d'étirement devant un scanner biométrique.
 | `M` | Activer/désactiver la détection de mouvement |
 | `P` | Activer/désactiver la vérification IA de posture |
 
-Le panneau `H` contient aussi 3 curseurs : sensibilité du mouvement,
-durée de mise en position (3–25 s) et durée du maintien (3–15 s).
+Le panneau `H` contient aussi 5 curseurs : sensibilité du mouvement,
+durée de mise en position (3–25 s), durée du maintien (3–15 s),
+taille minimale d'un agent (% de l'image — en dessous, la silhouette est
+considérée comme un spectateur et ignorée) et chrono de mission (5–60 min).
 
 ## 🚀 Déploiement
 
-Un seul fichier : `index.html`. La caméra exige du **HTTPS** (ou localhost).
+Deux fichiers : `index.html` et `sw.js` (mode hors-ligne). La caméra exige du
+**HTTPS** (ou localhost).
 
 ### Option A — GitHub Pages (gratuit, suffisant)
 1. Pousser ce dépôt sur GitHub
@@ -53,7 +65,9 @@ python3 -m http.server 8000
 
 ## 📋 Checklist jour J
 
-- [ ] Connexion internet sur le PC (chargement de l'IA au premier lancement)
+- [ ] Ouvrir le jeu une fois **avec internet** avant le jour J : le service worker
+  met tout en cache (IA comprise) et le jeu marchera ensuite même sans connexion
+- [ ] Régler le chrono de mission (`H`) selon la durée prévue de l'animation
 - [ ] Autoriser la caméra au clic sur « Activer le scanner »
 - [ ] Plein écran (`F11`), volume audible
 - [ ] Tester la sensibilité (`H`) avec l'éclairage réel de la salle
